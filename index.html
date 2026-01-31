@@ -431,43 +431,6 @@
                 }
             };
 
-            const syncFromCloud = async () => {
-                if (!isAuthenticated) return;
-                setIsSyncing(true);
-                try {
-                    const todosData = await gsheets.readSheet('todos');
-                    if (todosData.length > 1) {
-                        setTodos(gsheets.arrayToObjects(todosData).map(t => ({
-                            ...t, id: parseInt(t.id), assignedTo: parseInt(t.assignedTo), done: t.done === 'true'
-                        })));
-                    }
-                    const coursesData = await gsheets.readSheet('courses');
-                    if (coursesData.length > 1) {
-                        setCourses(gsheets.arrayToObjects(coursesData).map(c => ({
-                            ...c, id: parseInt(c.id), checked: c.checked === 'true'
-                        })));
-                    }
-                    setLastSync(new Date());
-                } catch (error) {
-                    console.error('Sync error:', error);
-                }
-                setIsSyncing(false);
-            };
-
-            const syncToCloud = async () => {
-                if (!isAuthenticated) return;
-                setIsSyncing(true);
-                try {
-                    await gsheets.writeSheet('todos', gsheets.objectsToArray(todos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
-                    await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
-                    await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
-                    setLastSync(new Date());
-                } catch (error) {
-                    console.error('Sync error:', error);
-                }
-                setIsSyncing(false);
-            };
-
             useEffect(() => {
                 if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
                     const timer = setTimeout(() => syncToCloud(), 2000);
