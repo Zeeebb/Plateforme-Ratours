@@ -344,18 +344,80 @@
                 if (!isAuthenticated) return;
                 setIsSyncing(true);
                 try {
+                    // Todos
                     const todosData = await gsheets.readSheet('todos');
                     if (todosData.length > 1) {
                         setTodos(gsheets.arrayToObjects(todosData).map(t => ({
-                            ...t, id: parseInt(t.id), assignedTo: parseInt(t.assignedTo), done: t.done === 'true'
+                            ...t,
+                            id: parseInt(t.id),
+                            assignedTo: parseInt(t.assignedTo),
+                            done: t.done === 'true'
                         })));
                     }
+                    
+                    // Courses
                     const coursesData = await gsheets.readSheet('courses');
                     if (coursesData.length > 1) {
                         setCourses(gsheets.arrayToObjects(coursesData).map(c => ({
-                            ...c, id: parseInt(c.id), checked: c.checked === 'true'
+                            ...c,
+                            id: parseInt(c.id),
+                            checked: c.checked === 'true'
                         })));
                     }
+                    
+                    // Menus
+                    const menusData = await gsheets.readSheet('menus');
+                    if (menusData.length > 1) {
+                        setMenus(gsheets.arrayToObjects(menusData).map(m => ({
+                            ...m,
+                            id: parseInt(m.id)
+                        })));
+                    }
+                    
+                    // Events
+                    const eventsData = await gsheets.readSheet('events');
+                    if (eventsData.length > 1) {
+                        setEvents(gsheets.arrayToObjects(eventsData).map(e => ({
+                            ...e,
+                            id: parseInt(e.id),
+                            assignedTo: JSON.parse(e.assignedTo || '[]') // Reconvertir en tableau
+                        })));
+                    }
+                    
+                    // Guard Schedule
+                    const guardData = await gsheets.readSheet('guardSchedule');
+                    if (guardData.length > 1) {
+                        setGuardSchedule(gsheets.arrayToObjects(guardData).map(g => ({
+                            ...g,
+                            id: parseInt(g.id),
+                            morning: g.morning ? parseInt(g.morning) : null,
+                            afternoon: g.afternoon ? parseInt(g.afternoon) : null
+                        })));
+                    }
+                    
+                    // Family Info - reconstruire la structure
+                    const familyData = await gsheets.readSheet('familyInfo');
+                    if (familyData.length > 1) {
+                        const familyObjects = gsheets.arrayToObjects(familyData);
+                        const reconstructed = {
+                            urgences: [],
+                            utiles: [],
+                            links: [],
+                            notes: []
+                        };
+                        familyObjects.forEach(item => {
+                            if (reconstructed[item.section]) {
+                                reconstructed[item.section].push({
+                                    id: parseInt(item.id),
+                                    label: item.label,
+                                    value: item.value,
+                                    type: item.type
+                                });
+                            }
+                        });
+                        setFamilyInfo(reconstructed);
+                    }
+                    
                     setLastSync(new Date());
                 } catch (error) {
                     console.error('Sync error:', error);
@@ -367,9 +429,40 @@
                 if (!isAuthenticated) return;
                 setIsSyncing(true);
                 try {
+                    // Todos
                     await gsheets.writeSheet('todos', gsheets.objectsToArray(todos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
+                    
+                    // Courses
                     await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
+                    
+                    // Menus
                     await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
+                    
+                    // Events
+                    const eventsForSheet = events.map(e => ({
+                        ...e,
+                        assignedTo: JSON.stringify(e.assignedTo) // Convertir le tableau en string
+                    }));
+                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                    
+                    // Guard Schedule
+                    await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, ['id', 'date', 'morning', 'afternoon', 'notes']));
+                    
+                    // Family Info - aplatir la structure
+                    const flatFamilyInfo = [];
+                    Object.entries(familyInfo).forEach(([section, items]) => {
+                        items.forEach(item => {
+                            flatFamilyInfo.push({
+                                section,
+                                id: item.id,
+                                label: item.label,
+                                value: item.value,
+                                type: item.type
+                            });
+                        });
+                    });
+                    await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
+                    
                     setLastSync(new Date());
                 } catch (error) {
                     console.error('Sync error:', error);
@@ -436,7 +529,7 @@
                     const timer = setTimeout(() => syncToCloud(), 2000);
                     return () => clearTimeout(timer);
                 }
-            }, [todos, courses, menus, isAuthenticated, currentUser]);
+            }, [todos, courses, menus, events, guardSchedule, familyInfo, isAuthenticated, currentUser]);
 
             const handleAdd = () => {
                 if (addType === 'event' && newItem.title && newItem.date) {
