@@ -426,7 +426,16 @@
             };
 
             const syncToCloud = async () => {
-                if (!isAuthenticated) return;
+                if (!isAuthenticated) {
+                    console.log('❌ Sync annulée: pas authentifié');
+                    return;
+                }
+                if (!gsheets.hasSpreadsheet()) {
+                    console.log('❌ Sync annulée: pas de spreadsheet');
+                    return;
+                }
+                
+                console.log('🔄 Début de la synchronisation vers Google Sheets...');
                 setIsSyncing(true);
                 try {
                     // Todos
@@ -464,8 +473,9 @@
                     await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
                     
                     setLastSync(new Date());
+                    console.log('✅ Synchronisation vers Google Sheets réussie !', new Date().toLocaleTimeString());
                 } catch (error) {
-                    console.error('Sync error:', error);
+                    console.error('❌ Erreur de synchronisation:', error);
                 }
                 setIsSyncing(false);
             };
@@ -526,6 +536,7 @@
 
             useEffect(() => {
                 if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
+                    console.log('⏱️ Changement détecté, synchronisation dans 2 secondes...');
                     const timer = setTimeout(() => syncToCloud(), 2000);
                     return () => clearTimeout(timer);
                 }
@@ -534,22 +545,30 @@
             const handleAdd = () => {
                 if (addType === 'event' && newItem.title && newItem.date) {
                     const cat = categories.events.find(c => c.id === newItem.category);
-                    setEvents([...events, {
+                    const newEvent = {
                         id: Date.now(), title: newItem.title, date: newItem.date, time: newItem.time,
                         category: newItem.category || 'general', assignedTo: [newItem.assignedTo || currentUser],
                         emoji: cat ? cat.emoji : '📅'
-                    }]);
+                    };
+                    setEvents([...events, newEvent]);
+                    console.log('➕ Événement ajouté:', newEvent.title);
                 } else if (addType === 'todo' && newItem.title) {
-                    setTodos([...todos, {
+                    const newTodo = {
                         id: Date.now(), title: newItem.title, category: newItem.category || 'general',
                         priority: newItem.priority, done: false, assignedTo: newItem.assignedTo || currentUser
-                    }]);
+                    };
+                    setTodos([...todos, newTodo]);
+                    console.log('➕ Tâche ajoutée:', newTodo.title);
                 } else if (addType === 'course' && newItem.title) {
-                    setCourses([...courses, {
+                    const newCourse = {
                         id: Date.now(), item: newItem.title, category: newItem.category || 'alimentaire', checked: false
-                    }]);
+                    };
+                    setCourses([...courses, newCourse]);
+                    console.log('➕ Course ajoutée:', newCourse.item);
                 } else if (addType === 'menu' && newItem.title && newItem.day) {
-                    setMenus([...menus, { id: Date.now(), day: newItem.day, meal: newItem.title, emoji: '🍽️' }]);
+                    const newMenu = { id: Date.now(), day: newItem.day, meal: newItem.title, emoji: '🍽️' };
+                    setMenus([...menus, newMenu]);
+                    console.log('➕ Menu ajouté:', newMenu.day, newMenu.meal);
                 }
                 setShowAddModal(false);
                 setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
