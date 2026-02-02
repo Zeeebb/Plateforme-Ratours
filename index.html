@@ -527,7 +527,7 @@
 
             useEffect(() => {
                 if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
-                    const timer = setTimeout(() => syncToCloud(), 2000);
+                    const timer = setTimeout(() => syncToCloud(), 500); // Sync après 0.5 seconde au lieu de 2
                     return () => clearTimeout(timer);
                 }
             }, [todos, courses, menus, events, guardSchedule, familyInfo, isAuthenticated, currentUser]);
