@@ -426,16 +426,8 @@
             };
 
             const syncToCloud = async () => {
-                if (!isAuthenticated) {
-                    console.log('❌ Sync annulée: pas authentifié');
-                    return;
-                }
-                if (!gsheets.hasSpreadsheet()) {
-                    console.log('❌ Sync annulée: pas de spreadsheet');
-                    return;
-                }
+                if (!isAuthenticated || !gsheets.hasSpreadsheet()) return;
                 
-                console.log('🔄 Début de la synchronisation vers Google Sheets...');
                 setIsSyncing(true);
                 try {
                     // Todos
@@ -473,9 +465,8 @@
                     await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
                     
                     setLastSync(new Date());
-                    console.log('✅ Synchronisation vers Google Sheets réussie !', new Date().toLocaleTimeString());
                 } catch (error) {
-                    console.error('❌ Erreur de synchronisation:', error);
+                    console.error('Erreur sync:', error);
                 }
                 setIsSyncing(false);
             };
@@ -536,7 +527,6 @@
 
             useEffect(() => {
                 if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
-                    console.log('⏱️ Changement détecté, synchronisation dans 2 secondes...');
                     const timer = setTimeout(() => syncToCloud(), 2000);
                     return () => clearTimeout(timer);
                 }
