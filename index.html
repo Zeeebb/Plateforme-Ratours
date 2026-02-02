@@ -426,8 +426,14 @@
             };
 
             const syncToCloud = async () => {
-                if (!isAuthenticated || !gsheets.hasSpreadsheet()) return;
+                console.log('🚀 syncToCloud appelée !');
+                if (!isAuthenticated || !gsheets.hasSpreadsheet()) {
+                    console.log('❌ Sync annulée - auth:', isAuthenticated, 'sheet:', gsheets.hasSpreadsheet());
+                    return;
+                }
                 
+                console.log('📤 Envoi vers Google Sheets...');
+                console.log('Données à envoyer:', { todos: todos.length, courses: courses.length, menus: menus.length });
                 setIsSyncing(true);
                 try {
                     // Todos
@@ -465,8 +471,10 @@
                     await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
                     
                     setLastSync(new Date());
+                    console.log('✅ Sync réussie !', new Date().toLocaleTimeString());
+                    console.log('Données synchronisées:', { todos: todos.length, courses: courses.length, menus: menus.length });
                 } catch (error) {
-                    console.error('Erreur sync:', error);
+                    console.error('❌ Erreur sync:', error);
                 }
                 setIsSyncing(false);
             };
@@ -527,8 +535,12 @@
 
             useEffect(() => {
                 if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
-                    const timer = setTimeout(() => syncToCloud(), 500); // Sync après 0.5 seconde au lieu de 2
+                    console.log('⏱️ useEffect déclenché - Sync dans 0.5s');
+                    console.log('📊 Données actuelles:', { todos: todos.length, courses: courses.length, menus: menus.length });
+                    const timer = setTimeout(() => syncToCloud(), 500);
                     return () => clearTimeout(timer);
+                } else {
+                    console.log('❌ useEffect bloqué:', { isAuthenticated, currentUser, hasSpreadsheet: gsheets.hasSpreadsheet() });
                 }
             }, [todos, courses, menus, events, guardSchedule, familyInfo, isAuthenticated, currentUser]);
 
@@ -564,12 +576,39 @@
                 setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
             };
 
-            const toggleTodo = (id) => setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
-            const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
-            const deleteEvent = (id) => setEvents(events.filter(e => e.id !== id));
-            const deleteTodo = (id) => setTodos(todos.filter(t => t.id !== id));
-            const deleteCourse = (id) => setCourses(courses.filter(c => c.id !== id));
-            const deleteMenu = (id) => setMenus(menus.filter(m => m.id !== id));
+            const toggleTodo = (id) => {
+                console.log('🔄 Toggle todo:', id);
+                setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
+            };
+            const toggleCourse = (id) => {
+                console.log('🔄 Toggle course:', id);
+                setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
+            };
+            const deleteEvent = (id) => {
+                console.log('🗑️ Delete event:', id);
+                console.log('Events avant:', events.length);
+                setEvents(events.filter(e => e.id !== id));
+                console.log('Events après filter:', events.filter(e => e.id !== id).length);
+            };
+            const deleteTodo = (id) => {
+                console.log('🗑️ Delete todo:', id);
+                console.log('Todos avant:', todos.length);
+                const newTodos = todos.filter(t => t.id !== id);
+                console.log('Todos après filter:', newTodos.length);
+                setTodos(newTodos);
+            };
+            const deleteCourse = (id) => {
+                console.log('🗑️ Delete course:', id);
+                console.log('Courses avant:', courses.length);
+                setCourses(courses.filter(c => c.id !== id));
+                console.log('Courses après filter:', courses.filter(c => c.id !== id).length);
+            };
+            const deleteMenu = (id) => {
+                console.log('🗑️ Delete menu:', id);
+                console.log('Menus avant:', menus.length);
+                setMenus(menus.filter(m => m.id !== id));
+                console.log('Menus après filter:', menus.filter(m => m.id !== id).length);
+            };
 
             const addFamilyInfo = (section, item) => {
                 setFamilyInfo({ ...familyInfo, [section]: [...familyInfo[section], { ...item, id: Date.now() }] });
