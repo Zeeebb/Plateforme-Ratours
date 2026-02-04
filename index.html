@@ -95,8 +95,24 @@
 
             async writeSheet(sheetName, values) {
                 try {
-                    const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A:Z?valueInputOption=RAW`;
-                    const response = await fetch(url, {
+                    // ÉTAPE 1 : CLEAR le sheet
+                    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A:Z:clear`;
+                    const clearResponse = await fetch(clearUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    if (!clearResponse.ok) {
+                        console.error(`Erreur CLEAR ${clearResponse.status}`);
+                        return false;
+                    }
+                    
+                    // ÉTAPE 2 : Écrire les nouvelles données
+                    const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A1?valueInputOption=RAW`;
+                    const updateResponse = await fetch(updateUrl, {
                         method: 'PUT',
                         headers: {
                             'Authorization': `Bearer ${this.accessToken}`,
@@ -105,14 +121,12 @@
                         body: JSON.stringify({ values })
                     });
                     
-                    // VÉRIFIER que la réponse est OK
-                    if (!response.ok) {
-                        console.error(`Erreur HTTP ${response.status}`);
+                    if (!updateResponse.ok) {
+                        console.error(`Erreur UPDATE ${updateResponse.status}`);
                         return false;
                     }
                     
-                    const result = await response.json();
-                    console.log('Réponse Google:', result);
+                    console.log('✅ Sheet effacé et réécrit');
                     return true;
                 } catch (error) {
                     console.error(`Erreur écriture ${sheetName}:`, error);
