@@ -276,19 +276,35 @@
             const toggleTodo = (id) => setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
             const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
             
-            const deleteTodo = (id) => {
+            const deleteTodo = async (id) => {
                 if (confirm('Supprimer cette tâche ?')) {
-                    setTodos(todos.filter(t => t.id !== id));
+                    const newTodos = todos.filter(t => t.id !== id);
+                    setTodos(newTodos);
+                    
+                    // Sync IMMÉDIATE avec les nouvelles valeurs
+                    setTimeout(async () => {
+                        await gsheets.writeSheet('todos', gsheets.objectsToArray(newTodos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
+                    }, 500);
                 }
             };
-            const deleteCourse = (id) => {
+            const deleteCourse = async (id) => {
                 if (confirm('Supprimer cet article ?')) {
-                    setCourses(courses.filter(c => c.id !== id));
+                    const newCourses = courses.filter(c => c.id !== id);
+                    setCourses(newCourses);
+                    
+                    setTimeout(async () => {
+                        await gsheets.writeSheet('courses', gsheets.objectsToArray(newCourses, ['id', 'item', 'category', 'checked']));
+                    }, 500);
                 }
             };
-            const deleteMenu = (id) => {
+            const deleteMenu = async (id) => {
                 if (confirm('Supprimer ce menu ?')) {
-                    setMenus(menus.filter(m => m.id !== id));
+                    const newMenus = menus.filter(m => m.id !== id);
+                    setMenus(newMenus);
+                    
+                    setTimeout(async () => {
+                        await gsheets.writeSheet('menus', gsheets.objectsToArray(newMenus, ['id', 'day', 'meal', 'emoji']));
+                    }, 500);
                 }
             };
 
