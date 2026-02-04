@@ -211,7 +211,14 @@
                 const initGoogle = async () => {
                     await gsheets.initialize();
                     setIsGoogleReady(true);
-                    setIsAuthenticated(gsheets.isAuthenticated());
+                    const isAuth = gsheets.isAuthenticated();
+                    setIsAuthenticated(isAuth);
+                    
+                    // Si déjà authentifié, charger les données automatiquement
+                    if (isAuth && gsheets.hasSpreadsheet()) {
+                        console.log('✅ Déjà authentifié, chargement des données...');
+                        await syncFromCloud();
+                    }
                 };
                 if (window.google) {
                     initGoogle();
