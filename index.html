@@ -388,53 +388,42 @@
             const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
             const deleteEvent = (id) => {
                 if (confirm('Supprimer cet événement ?')) {
-                    console.log('🗑️ Suppression événement:', id);
                     const newEvents = events.filter(e => e.id !== id);
-                    console.log('Événements restants:', newEvents.length);
                     setEvents(newEvents);
                     setTimeout(async () => {
-                        await syncToCloud();
-                        console.log('✅ Suppression synchronisée');
-                    }, 100);
+                        const eventsForSheet = newEvents.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
+                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                    }, 500);
                 }
             };
             
             const deleteTodo = (id) => {
                 if (confirm('Supprimer cette tâche ?')) {
-                    console.log('🗑️ Suppression tâche:', id);
                     const newTodos = todos.filter(t => t.id !== id);
-                    console.log('Tâches restantes:', newTodos.length);
                     setTodos(newTodos);
                     setTimeout(async () => {
-                        await syncToCloud();
-                        console.log('✅ Suppression synchronisée');
-                    }, 100);
+                        await gsheets.writeSheet('todos', gsheets.objectsToArray(newTodos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
+                    }, 500);
                 }
             };
             
             const deleteCourse = (id) => {
                 if (confirm('Supprimer cet article ?')) {
-                    console.log('🗑️ Suppression course:', id);
                     const newCourses = courses.filter(c => c.id !== id);
-                    console.log('Courses restantes:', newCourses.length);
                     setCourses(newCourses);
                     setTimeout(async () => {
-                        await syncToCloud();
-                        console.log('✅ Suppression synchronisée');
-                    }, 100);
+                        await gsheets.writeSheet('courses', gsheets.objectsToArray(newCourses, ['id', 'item', 'category', 'checked']));
+                    }, 500);
                 }
             };
             
             const deleteMenu = (id) => {
                 if (confirm('Supprimer ce menu ?')) {
-                    console.log('🗑️ Suppression menu:', id);
                     const newMenus = menus.filter(m => m.id !== id);
-                    console.log('Menus restants:', newMenus.length);
                     setMenus(newMenus);
                     setTimeout(async () => {
-                        await syncToCloud();
-                        console.log('✅ Suppression synchronisée');
-                    }, 100);
+                        await gsheets.writeSheet('menus', gsheets.objectsToArray(newMenus, ['id', 'day', 'meal', 'emoji']));
+                    }, 500);
                 }
             };
 
