@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plateforme Ratours</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // CLIENT ID GOOGLE
+        const GOOGLE_CLIENT_ID = '988519105715-eqfihmrhgotpkund2ub9nvb3ov7nfde4.apps.googleusercontent.com';
+        const SPREADSHEET_ID = '186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw'; // ID fixe du Google Sheet
+        
+        const Icon = ({ name, size = 24 }) => {
+            const icons = {
+                home: "🏠", calendar: "📅", check: "✓", cart: "🛒",
+                chef: "🍽️", users: "👨‍👩‍👧", logout: "→", settings: "⚙️",
+                chart: "📊", baby: "👶", plus: "+", x: "×",
+                edit: "✏️", save: "💾", trash: "🗑️", cloud: "☁️", sync: "🔄"
+            };
+            return <span style={{ fontSize: size }}>{icons[name] || "•"}</span>;
+        };
+
+        // GOOGLE SHEETS SERVICE
+        class GoogleSheetsService {
+            constructor() {
+                this.accessToken = null;
+                this.tokenClient = null;
+                this.spreadsheetId = SPREADSHEET_ID; // Utiliser l'ID fixe
+            }
+
+            initialize() {
+                return new Promise((resolve) => {
+                    this.tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: GOOGLE_CLIENT_ID,
+                        scope: 'https://www.googleapis.com/auth/spreadsheets',
+                        callback: (response) => {
+                            if (response.access_token) {
+                                this.accessToken = response.access_token;
+                                localStorage.setItem('gsheets_token', response.access_token);
+                            }
+                        },
+                    });
+                    const savedToken = localStorage.getItem('gsheets_token');
+                    if (savedToken) this.accessToken = savedToken;
+                    resolve(true);
+                });
+            }
+
+            async requestAuth() {
+                return new Promise((resolve) => {
+                    this.tokenClient.callback = (response) => {
+                        if (response.access_token) {
+                            this.accessToken = response.access_token;
+                            localStorage.setItem('gsheets_token', response.access_token);
+                            resolve(true);
+                        } else resolve(false);
+                    };
+                    this.tokenClient.requestAccessToken();
+                });
+            }
+
+            isAuthenticated() { return !!this.accessToken; }
+            hasSpreadsheet() { return !!this.spreadsheetId; }
+
+            logout() {
+                this.accessToken = null;
+                this.spreadsheetId = null;
+                localStorage.removeItem('gsheets_token');
+                localStorage.removeItem('spreadsheet_id');
+            }
+
+            async createSpreadsheet() {
+                try {
+                    const response = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            properties: { title: 'Plateforme Ratours Data' },
+                            sheets: [
+                                { properties: { title: 'todos' } },
+                                { properties: { title: 'courses' } },
+                                { properties: { title: 'menus' } },
+                                { properties: { title: 'events' } },
+                                { properties: { title: 'guardSchedule' } },
+                                { properties: { title: 'familyInfo' } }
+                            ]
+                        })
+                    });
+                    const data = await response.json();
+                    this.spreadsheetId = data.spreadsheetId;
+                    localStorage.setItem('spreadsheet_id', this.spreadsheetId);
+                    await this.initializeSheets();
+                    return { id: data.spreadsheetId, url: data.spreadsheetUrl };
+                } catch (error) {
+                    console.error('Error creating spreadsheet:', error);
+                    return null;
+                }
+            }
+
+            async initializeSheets() {
+                const sheetsData = {
+                    'todos': [['id', 'title', 'category', 'priority', 'done', 'assignedTo']],
+                    'courses': [['id', 'item', 'category', 'checked']],
+                    'menus': [['id', 'day', 'meal', 'emoji']],
+                    'events': [['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']],
+                    'guardSchedule': [['id', 'date', 'morning', 'afternoon', 'notes']],
+                    'familyInfo': [['section', 'id', 'label', 'value', 'type']]
+                };
+                for (const [sheetName, headers] of Object.entries(sheetsData)) {
+                    await this.writeSheet(sheetName, headers);
+                }
+            }
+
+            async migrateSpreadsheet() {
+                try {
+                    console.log('🔄 Vérification de la structure du Google Sheet...');
+                    
+                    // Récupérer la liste des onglets existants
+                    const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}`, {
+                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                    });
+                    const spreadsheet = await response.json();
+                    const existingSheets = spreadsheet.sheets.map(s => s.properties.title);
+                    
+                    console.log('📋 Onglets existants:', existingSheets);
+                    
+                    // Structure requise
+                    const requiredSheets = {
+                        'todos': ['id', 'title', 'category', 'priority', 'done', 'assignedTo'],
+                        'courses': ['id', 'item', 'category', 'checked'],
+                        'menus': ['id', 'day', 'meal', 'emoji'],
+                        'events': ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji'],
+                        'guardSchedule': ['id', 'date', 'morning', 'afternoon', 'notes'],
+                        'familyInfo': ['section', 'id', 'label', 'value', 'type']
+                    };
+                    
+                    const requests = [];
+                    
+                    // Pour chaque onglet requis
+                    for (const [sheetName, requiredHeaders] of Object.entries(requiredSheets)) {
+                        if (!existingSheets.includes(sheetName)) {
+                            // Créer l'onglet s'il n'existe pas
+                            console.log(`➕ Création de l'onglet: ${sheetName}`);
+                            requests.push({
+                                addSheet: {
+                                    properties: { title: sheetName }
+                                }
+                            });
+                        } else {
+                            // Vérifier/mettre à jour les en-têtes
+                            const data = await this.readSheet(sheetName);
+                            if (data.length === 0 || JSON.stringify(data[0]) !== JSON.stringify(requiredHeaders)) {
+                                console.log(`🔧 Mise à jour des en-têtes de: ${sheetName}`);
+                                // Si pas d'en-têtes ou en-têtes incorrects, on les ajoute/corrige
+                                await this.writeSheet(sheetName, [requiredHeaders, ...data.slice(1)]);
+                            }
+                        }
+                    }
+                    
+                    // Créer les onglets manquants en une seule requête batch
+                    if (requests.length > 0) {
+                        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}:batchUpdate`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${this.accessToken}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ requests })
+                        });
+                        
+                        // Initialiser les en-têtes des nouveaux onglets
+                        for (const [sheetName, headers] of Object.entries(requiredSheets)) {
+                            if (!existingSheets.includes(sheetName)) {
+                                await this.writeSheet(sheetName, [headers]);
+                            }
+                        }
+                    }
+                    
+                    console.log('✅ Structure du Google Sheet mise à jour !');
+                    return true;
+                } catch (error) {
+                    console.error('❌ Erreur de migration:', error);
+                    return false;
+                }
+            }
+
+            async readSheet(sheetName) {
+                try {
+                    const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A:Z`;
+                    const response = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                    });
+                    const result = await response.json();
+                    return result.values || [];
+                } catch (error) {
+                    console.error(`Error reading ${sheetName}:`, error);
+                    return [];
+                }
+            }
+
+            async writeSheet(sheetName, values) {
+                try {
+                    const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A:Z?valueInputOption=RAW`;
+                    await fetch(url, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ values })
+                    });
+                    return true;
+                } catch (error) {
+                    console.error(`Error writing ${sheetName}:`, error);
+                    return false;
+                }
+            }
+
+            arrayToObjects(array) {
+                if (!array || array.length === 0) return [];
+                const headers = array[0];
+                return array.slice(1).map(row => {
+                    const obj = {};
+                    headers.forEach((header, index) => { obj[header] = row[index] || ''; });
+                    return obj;
+                });
+            }
+
+            objectsToArray(objects, headers) {
+                if (!objects || objects.length === 0) return [headers];
+                const rows = objects.map(obj => headers.map(header => obj[header] !== undefined ? String(obj[header]) : ''));
+                return [headers, ...rows];
+            }
+        }
+
+        const gsheets = new GoogleSheetsService();
+
+        // APP PRINCIPAL
+        const App = () => {
+            const [isGoogleReady, setIsGoogleReady] = useState(false);
+            const [isAuthenticated, setIsAuthenticated] = useState(false);
+            const [isCreatingSheet, setIsCreatingSheet] = useState(false);
+            const [spreadsheetUrl, setSpreadsheetUrl] = useState(null);
+            const [isSyncing, setIsSyncing] = useState(false);
+            const [isMigrating, setIsMigrating] = useState(false);
+            const [lastSync, setLastSync] = useState(null);
+            const [currentUser, setCurrentUser] = useState(null);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [addType, setAddType] = useState('');
+            const [calendarView, setCalendarView] = useState('week');
+            const [editingInfo, setEditingInfo] = useState(null);
+            const [editingUser, setEditingUser] = useState(null);
+            const [editingGuard, setEditingGuard] = useState(null);
+            const [editingEvent, setEditingEvent] = useState(null);
+            const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
+            const [statsTimeframe, setStatsTimeframe] = useState('month');
+
+            const [users, setUsers] = useState([
+                { id: 1, name: 'Maman', color: 'bg-pink-400', emoji: '👩' },
+                { id: 2, name: 'Papa', color: 'bg-blue-400', emoji: '👨' },
+            ]);
+
+            const [externalPeople, setExternalPeople] = useState([
+                { id: 4, name: 'Mamie', emoji: '👵' },
+                { id: 5, name: 'Nounou', emoji: '🧑‍🍼' },
+            ]);
+
+            const [categories, setCategories] = useState({
+                courses: [
+                    { id: 'alimentaire', name: 'Alimentaire', emoji: '🥖' },
+                    { id: 'enfant', name: 'Enfant', emoji: '🍼' },
+                    { id: 'maison', name: 'Maison', emoji: '🧹' },
+                ],
+                todos: [
+                    { id: 'rdv', name: 'RDV', emoji: '📞' },
+                    { id: 'enfant', name: 'Enfant', emoji: '👶' },
+                    { id: 'maison', name: 'Maison', emoji: '🏠' },
+                ],
+                events: [
+                    { id: 'medical', name: 'Médical', emoji: '🏥' },
+                    { id: 'voyage', name: 'Voyage', emoji: '✈️' },
+                    { id: 'ecole', name: 'École', emoji: '🏫' },
+                    { id: 'famille', name: 'Famille', emoji: '👨‍👩‍👧' },
+                ],
+            });
+
+            const [events, setEvents] = useState([
+                { id: 1, title: 'RDV pédiatre', date: '2026-01-24', category: 'medical', assignedTo: [1, 2], emoji: '🏥' },
+                { id: 2, title: 'Train Paris', date: '2026-01-26', time: '14:30', category: 'voyage', assignedTo: [1, 2], emoji: '✈️' },
+            ]);
+
+            const [todos, setTodos] = useState([
+                { id: 1, title: 'Prendre RDV dentiste', category: 'rdv', priority: 'high', done: false, assignedTo: 1 },
+                { id: 2, title: 'Acheter chaussures', category: 'enfant', priority: 'medium', done: false, assignedTo: 2 },
+            ]);
+
+            const [courses, setCourses] = useState([
+                { id: 1, item: 'Lait bio', category: 'alimentaire', checked: false },
+                { id: 2, item: 'Couches', category: 'enfant', checked: false },
+            ]);
+
+            const [menus, setMenus] = useState([
+                { id: 1, day: 'Lundi', meal: 'Pâtes bolognaise', emoji: '🍝' },
+                { id: 2, day: 'Mardi', meal: 'Poulet rôti', emoji: '🗡' },
+            ]);
+
+            const [guardSchedule, setGuardSchedule] = useState([
+                { id: 1, date: '2026-01-20', morning: 1, afternoon: 2, notes: 'Crèche matin' },
+                { id: 2, date: '2026-01-21', morning: 2, afternoon: 1, notes: '' },
+            ]);
+
+            const [familyInfo, setFamilyInfo] = useState({
+                urgences: [{ id: 1, label: 'Pédiatre', value: '01 23 45 67 89', type: 'phone' }],
+                utiles: [{ id: 1, label: 'Crèche', value: '01 23 45 67 90', type: 'phone' }],
+                links: [{ id: 1, label: 'Paris Famille', value: 'https://www.paris.fr', type: 'link' }],
+                notes: [{ id: 1, label: 'Horaires piscine', value: 'Mer 14h-18h', type: 'text' }],
+            });
+
+            const [newItem, setNewItem] = useState({
+                title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: ''
+            });
+
+            const allPeople = [...users, ...externalPeople];
+
+            // Sync functions
+            const syncFromCloud = async () => {
+                if (!isAuthenticated) return;
+                setIsSyncing(true);
+                try {
+                    // Todos
+                    const todosData = await gsheets.readSheet('todos');
+                    if (todosData.length > 1) {
+                        setTodos(gsheets.arrayToObjects(todosData).map(t => ({
+                            ...t,
+                            id: parseInt(t.id),
+                            assignedTo: parseInt(t.assignedTo),
+                            done: t.done === 'true'
+                        })));
+                    }
+                    
+                    // Courses
+                    const coursesData = await gsheets.readSheet('courses');
+                    if (coursesData.length > 1) {
+                        setCourses(gsheets.arrayToObjects(coursesData).map(c => ({
+                            ...c,
+                            id: parseInt(c.id),
+                            checked: c.checked === 'true'
+                        })));
+                    }
+                    
+                    // Menus
+                    const menusData = await gsheets.readSheet('menus');
+                    if (menusData.length > 1) {
+                        setMenus(gsheets.arrayToObjects(menusData).map(m => ({
+                            ...m,
+                            id: parseInt(m.id)
+                        })));
+                    }
+                    
+                    // Events
+                    const eventsData = await gsheets.readSheet('events');
+                    if (eventsData.length > 1) {
+                        setEvents(gsheets.arrayToObjects(eventsData).map(e => ({
+                            ...e,
+                            id: parseInt(e.id),
+                            assignedTo: JSON.parse(e.assignedTo || '[]') // Reconvertir en tableau
+                        })));
+                    }
+                    
+                    // Guard Schedule
+                    const guardData = await gsheets.readSheet('guardSchedule');
+                    if (guardData.length > 1) {
+                        setGuardSchedule(gsheets.arrayToObjects(guardData).map(g => ({
+                            ...g,
+                            id: parseInt(g.id),
+                            morning: g.morning ? parseInt(g.morning) : null,
+                            afternoon: g.afternoon ? parseInt(g.afternoon) : null
+                        })));
+                    }
+                    
+                    // Family Info - reconstruire la structure
+                    const familyData = await gsheets.readSheet('familyInfo');
+                    if (familyData.length > 1) {
+                        const familyObjects = gsheets.arrayToObjects(familyData);
+                        const reconstructed = {
+                            urgences: [],
+                            utiles: [],
+                            links: [],
+                            notes: []
+                        };
+                        familyObjects.forEach(item => {
+                            if (reconstructed[item.section]) {
+                                reconstructed[item.section].push({
+                                    id: parseInt(item.id),
+                                    label: item.label,
+                                    value: item.value,
+                                    type: item.type
+                                });
+                            }
+                        });
+                        setFamilyInfo(reconstructed);
+                    }
+                    
+                    setLastSync(new Date());
+                } catch (error) {
+                    console.error('Sync error:', error);
+                }
+                setIsSyncing(false);
+            };
+
+            const syncToCloud = async () => {
+                console.log('🚀 syncToCloud appelée !');
+                if (!isAuthenticated || !gsheets.hasSpreadsheet()) {
+                    console.log('❌ Sync annulée - auth:', isAuthenticated, 'sheet:', gsheets.hasSpreadsheet());
+                    return;
+                }
+                
+                console.log('📤 Envoi vers Google Sheets...');
+                console.log('Données à envoyer:', { todos: todos.length, courses: courses.length, menus: menus.length });
+                setIsSyncing(true);
+                try {
+                    // Todos
+                    await gsheets.writeSheet('todos', gsheets.objectsToArray(todos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
+                    
+                    // Courses
+                    await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
+                    
+                    // Menus
+                    await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
+                    
+                    // Events
+                    const eventsForSheet = events.map(e => ({
+                        ...e,
+                        assignedTo: JSON.stringify(e.assignedTo) // Convertir le tableau en string
+                    }));
+                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                    
+                    // Guard Schedule
+                    await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, ['id', 'date', 'morning', 'afternoon', 'notes']));
+                    
+                    // Family Info - aplatir la structure
+                    const flatFamilyInfo = [];
+                    Object.entries(familyInfo).forEach(([section, items]) => {
+                        items.forEach(item => {
+                            flatFamilyInfo.push({
+                                section,
+                                id: item.id,
+                                label: item.label,
+                                value: item.value,
+                                type: item.type
+                            });
+                        });
+                    });
+                    await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
+                    
+                    setLastSync(new Date());
+                    console.log('✅ Sync réussie !', new Date().toLocaleTimeString());
+                    console.log('Données synchronisées:', { todos: todos.length, courses: courses.length, menus: menus.length });
+                } catch (error) {
+                    console.error('❌ Erreur sync:', error);
+                }
+                setIsSyncing(false);
+            };
+
+            // Init Google
+            useEffect(() => {
+                const initGoogle = async () => {
+                    await gsheets.initialize();
+                    setIsGoogleReady(true);
+                    const isAuth = gsheets.isAuthenticated();
+                    setIsAuthenticated(isAuth);
+                    
+                    // Si déjà authentifié au démarrage, lancer la migration
+                    if (isAuth && gsheets.hasSpreadsheet()) {
+                        setIsMigrating(true);
+                        await gsheets.migrateSpreadsheet();
+                        setIsMigrating(false);
+                        await syncFromCloud();
+                    }
+                };
+                if (window.google) {
+                    initGoogle();
+                } else {
+                    const checkGoogle = setInterval(() => {
+                        if (window.google) {
+                            clearInterval(checkGoogle);
+                            initGoogle();
+                        }
+                    }, 100);
+                }
+            }, []);
+
+            const handleGoogleLogin = async () => {
+                const success = await gsheets.requestAuth();
+                if (success) {
+                    setIsAuthenticated(true);
+                    console.log('✅ Authentifié ! Chargement des données...');
+                    await syncFromCloud();
+                }
+            };
+
+            useEffect(() => {
+                if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
+                    console.log('⏱️ useEffect déclenché - Sync dans 0.5s');
+                    console.log('📊 Données actuelles:', { todos: todos.length, courses: courses.length, menus: menus.length });
+                    const timer = setTimeout(() => syncToCloud(), 500);
+                    return () => clearTimeout(timer);
+                } else {
+                    console.log('❌ useEffect bloqué:', { isAuthenticated, currentUser, hasSpreadsheet: gsheets.hasSpreadsheet() });
+                }
+            }, [todos, courses, menus, events, guardSchedule, familyInfo, isAuthenticated, currentUser]);
+
+            const handleAdd = () => {
+                if (addType === 'event' && newItem.title && newItem.date) {
+                    const cat = categories.events.find(c => c.id === newItem.category);
+                    const newEvent = {
+                        id: Date.now(), title: newItem.title, date: newItem.date, time: newItem.time,
+                        category: newItem.category || 'general', assignedTo: [newItem.assignedTo || currentUser],
+                        emoji: cat ? cat.emoji : '📅'
+                    };
+                    setEvents([...events, newEvent]);
+                    console.log('➕ Événement ajouté:', newEvent.title);
+                } else if (addType === 'todo' && newItem.title) {
+                    const newTodo = {
+                        id: Date.now(), title: newItem.title, category: newItem.category || 'general',
+                        priority: newItem.priority, done: false, assignedTo: newItem.assignedTo || currentUser
+                    };
+                    setTodos([...todos, newTodo]);
+                    console.log('➕ Tâche ajoutée:', newTodo.title);
+                } else if (addType === 'course' && newItem.title) {
+                    const newCourse = {
+                        id: Date.now(), item: newItem.title, category: newItem.category || 'alimentaire', checked: false
+                    };
+                    setCourses([...courses, newCourse]);
+                    console.log('➕ Course ajoutée:', newCourse.item);
+                } else if (addType === 'menu' && newItem.title && newItem.day) {
+                    const newMenu = { id: Date.now(), day: newItem.day, meal: newItem.title, emoji: '🍽️' };
+                    setMenus([...menus, newMenu]);
+                    console.log('➕ Menu ajouté:', newMenu.day, newMenu.meal);
+                }
+                setShowAddModal(false);
+                setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
+            };
+
+            const toggleTodo = (id) => {
+                console.log('🔄 Toggle todo:', id);
+                setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
+            };
+            const toggleCourse = (id) => {
+                console.log('🔄 Toggle course:', id);
+                setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
+            };
+            const deleteEvent = (id) => {
+                console.log('🗑️ Delete event:', id);
+                console.log('Events avant:', events.length);
+                setEvents(events.filter(e => e.id !== id));
+                console.log('Events après filter:', events.filter(e => e.id !== id).length);
+            };
+            const deleteTodo = (id) => {
+                console.log('🗑️ Delete todo:', id);
+                console.log('Todos avant:', todos.length);
+                const newTodos = todos.filter(t => t.id !== id);
+                console.log('Todos après filter:', newTodos.length);
+                setTodos(newTodos);
+            };
+            const deleteCourse = (id) => {
+                console.log('🗑️ Delete course:', id);
+                console.log('Courses avant:', courses.length);
+                setCourses(courses.filter(c => c.id !== id));
+                console.log('Courses après filter:', courses.filter(c => c.id !== id).length);
+            };
+            const deleteMenu = (id) => {
+                console.log('🗑️ Delete menu:', id);
+                console.log('Menus avant:', menus.length);
+                setMenus(menus.filter(m => m.id !== id));
+                console.log('Menus après filter:', menus.filter(m => m.id !== id).length);
+            };
+
+            const addFamilyInfo = (section, item) => {
+                setFamilyInfo({ ...familyInfo, [section]: [...familyInfo[section], { ...item, id: Date.now() }] });
+            };
+
+            const deleteFamilyInfo = (section, id) => {
+                setFamilyInfo({ ...familyInfo, [section]: familyInfo[section].filter(item => item.id !== id) });
+            };
+
+            const calculateTaskStats = () => {
+                const parent1Tasks = todos.filter(t => t.assignedTo === 1);
+                const parent2Tasks = todos.filter(t => t.assignedTo === 2);
+                const parent1Done = parent1Tasks.filter(t => t.done).length;
+                const parent2Done = parent2Tasks.filter(t => t.done).length;
+                const totalTasks = parent1Tasks.length + parent2Tasks.length;
+                const parent1Share = totalTasks > 0 ? Math.round((parent1Tasks.length / totalTasks) * 100) : 50;
+                const parent2Share = 100 - parent1Share;
+                return {
+                    parent1: { total: parent1Tasks.length, done: parent1Done, todo: parent1Tasks.length - parent1Done, share: parent1Share },
+                    parent2: { total: parent2Tasks.length, done: parent2Done, todo: parent2Tasks.length - parent2Done, share: parent2Share },
+                    totalTasks, totalDone: parent1Done + parent2Done, isBalanced: Math.abs(parent1Share - 50) <= 10
+                };
+            };
+
+            const stats = calculateTaskStats();
+
+            const generateGuardWeek = () => {
+                const baseDate = new Date('2026-01-20');
+                const weekStart = new Date(baseDate);
+                weekStart.setDate(weekStart.getDate() + (currentWeekOffset * 7));
+                const week = [];
+                const dayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+                for (let i = 0; i < 7; i++) {
+                    const date = new Date(weekStart);
+                    date.setDate(date.getDate() + i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    const existing = guardSchedule.find(g => g.date === dateStr);
+                    week.push({
+                        date: dateStr, dayName: dayNames[date.getDay()],
+                        displayDate: `${date.getDate()}/${date.getMonth() + 1}`,
+                        morning: existing?.morning || null, afternoon: existing?.afternoon || null,
+                        notes: existing?.notes || '', id: existing?.id || null
+                    });
+                }
+                return week;
+            };
+
+            const guardWeek = generateGuardWeek();
+
+            // LOGIN SCREEN
+            if (!currentUser) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex items-center justify-center p-6">
+                        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
+                            <div className="text-center mb-8">
+                                <div className="text-6xl mb-4">🏠</div>
+                                <h1 className="text-3xl font-bold text-gray-800 mb-2">Plateforme Ratours</h1>
+                                <p className="text-gray-600">Qui se connecte ?</p>
+                            </div>
+                            {isGoogleReady && !isAuthenticated && (
+                                <div className="mb-6 p-4 bg-blue-50 rounded-2xl border-2 border-blue-200">
+                                    <p className="text-sm text-blue-800 mb-3">☁️ Connectez-vous pour synchroniser avec votre Google Sheet</p>
+                                    <button onClick={handleGoogleLogin} className="w-full bg-white border-2 border-gray-300 text-gray-700 px-4 py-3 rounded-xl hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
+                                        <Icon name="cloud" size={20} />
+                                        <span className="font-medium">Se connecter avec Google</span>
+                                    </button>
+                                </div>
+                            )}
+                            {isAuthenticated && (
+                                <div className="mb-6 p-4 bg-green-50 rounded-2xl border-2 border-green-200">
+                                    <p className="text-sm text-green-800 mb-2">✅ Connecté à votre Google Sheet</p>
+                                    <a href="https://docs.google.com/spreadsheets/d/186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">Ouvrir le Google Sheet →</a>
+                                </div>
+                            )}
+                            <div className="space-y-4">
+                                {users.map(user => (
+                                    <button key={user.id} onClick={() => setCurrentUser(user.id)} className={`w-full ${user.color} text-white p-6 rounded-2xl hover:opacity-90 transition-all shadow-lg flex items-center justify-center gap-3`}>
+                                        <span className="text-4xl">{user.emoji}</span>
+                                        <span className="text-2xl font-bold">{user.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            {isAuthenticated && <button onClick={() => { gsheets.logout(); setIsAuthenticated(false); }} className="mt-4 w-full text-sm text-gray-600">Se déconnecter</button>}
+                        </div>
+                    </div>
+                );
+            }
+
+            const currentUserData = users.find(u => u.id === currentUser);
+
+            // RENDER TABS
+            const renderDashboard = () => {
+                const myTodos = todos.filter(t => !t.done && t.assignedTo === currentUser);
+                return (
+                    <div className="space-y-6">
+                        <div className="bg-gradient-to-r from-purple-400 to-pink-400 rounded-3xl p-6 text-white shadow-lg">
+                            <h2 className="text-3xl font-bold mb-2">Bonjour {currentUserData.name} ! 👋</h2>
+                            <p className="text-purple-100">Vendredi 23 janvier 2026</p>
+                        </div>
+                        {!isAuthenticated && (
+                            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-4">
+                                <p className="text-yellow-800 mb-3">☁️ Connectez-vous pour sauvegarder</p>
+                                <button onClick={handleGoogleLogin} className="bg-yellow-400 text-yellow-900 px-4 py-2 rounded-xl">Se connecter</button>
+                            </div>
+                        )}
+                        <div className="bg-white rounded-2xl shadow-lg p-6">
+                            <h3 className="font-bold text-gray-800 mb-4">✅ Mes tâches ({myTodos.length})</h3>
+                            {myTodos.slice(0, 5).map(todo => (
+                                <div key={todo.id} className="flex items-center gap-3 py-2">
+                                    <input type="checkbox" className="h-5 w-5" onChange={() => toggleTodo(todo.id)} />
+                                    <span>{todo.title}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="bg-white rounded-2xl shadow-lg p-6">
+                            <h3 className="font-bold text-gray-800 mb-4">🛒 Courses ({courses.filter(c => !c.checked).length})</h3>
+                            {courses.filter(c => !c.checked).slice(0, 6).map(course => (
+                                <div key={course.id} className="flex items-center gap-3 py-1">
+                                    <input type="checkbox" className="h-4 w-4" onChange={() => toggleCourse(course.id)} />
+                                    <span className="text-sm">{course.item}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderCalendar = () => (
+                <div className="space-y-4">
+                    <h2 className="text-2xl font-bold">📅 Calendrier</h2>
+                    {events.map(event => (
+                        <div key={event.id} className="bg-white rounded-2xl shadow-lg p-5 flex items-start gap-4">
+                            <span className="text-4xl">{event.emoji}</span>
+                            <div className="flex-1">
+                                <h3 className="font-bold text-gray-800 mb-1">{event.title}</h3>
+                                <p className="text-sm text-gray-600">{event.date} {event.time}</p>
+                            </div>
+                            <button onClick={() => deleteEvent(event.id)} className="text-red-400"><Icon name="x" size={20} /></button>
+                        </div>
+                    ))}
+                </div>
+            );
+
+            const renderTodos = () => (
+                <div className="space-y-4">
+                    <h2 className="text-2xl font-bold">✅ Tâches</h2>
+                    {categories.todos.map(cat => {
+                        const catTodos = todos.filter(t => t.category === cat.id);
+                        if (catTodos.length === 0) return null;
+                        return (
+                            <div key={cat.id} className="bg-white rounded-2xl shadow-lg p-5">
+                                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span className="text-2xl">{cat.emoji}</span>
+                                    <span>{cat.name}</span>
+                                </h3>
+                                {catTodos.map(todo => (
+                                    <div key={todo.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                                        <div className="flex items-center gap-3 flex-1">
+                                            <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
+                                            <span className={todo.done ? 'line-through text-gray-400' : 'text-gray-800'}>{todo.title}</span>
+                                        </div>
+                                        <button onClick={() => deleteTodo(todo.id)} className="text-red-400"><Icon name="x" size={16} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+
+            const renderCourses = () => (
+                <div className="space-y-4">
+                    <h2 className="text-2xl font-bold">🛒 Courses</h2>
+                    {categories.courses.map(cat => {
+                        const catCourses = courses.filter(c => c.category === cat.id);
+                        if (catCourses.length === 0) return null;
+                        return (
+                            <div key={cat.id} className="bg-white rounded-2xl shadow-lg p-5">
+                                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                    <span className="text-2xl">{cat.emoji}</span>
+                                    <span>{cat.name}</span>
+                                </h3>
+                                {catCourses.map(course => (
+                                    <div key={course.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                        <div className="flex items-center gap-3 flex-1">
+                                            <input type="checkbox" checked={course.checked} onChange={() => toggleCourse(course.id)} className="h-5 w-5" />
+                                            <span className={course.checked ? 'line-through text-gray-400' : ''}>{course.item}</span>
+                                        </div>
+                                        <button onClick={() => deleteCourse(course.id)} className="text-red-400"><Icon name="x" size={16} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+
+            const renderMenus = () => (
+                <div className="space-y-4">
+                    <h2 className="text-2xl font-bold">🍽️ Menus</h2>
+                    {menus.map(m => (
+                        <div key={m.id} className="bg-white rounded-2xl shadow-lg p-5 flex gap-4">
+                            <span className="text-5xl">{m.emoji}</span>
+                            <div className="flex-1">
+                                <h3 className="font-bold text-lg">{m.day}</h3>
+                                <p className="text-gray-600">{m.meal}</p>
+                            </div>
+                            <button onClick={() => deleteMenu(m.id)} className="text-red-400"><Icon name="trash" size={20} /></button>
+                        </div>
+                    ))}
+                </div>
+            );
+
+            const renderStats = () => (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold">📊 Statistiques</h2>
+                    <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-6 border-2 border-purple-200">
+                        <h3 className="text-xl font-bold mb-4">⚖️ Équilibre parental</h3>
+                        {stats.isBalanced && stats.totalTasks > 0 && (
+                            <div className="bg-green-100 border border-green-300 rounded-xl p-3 mb-4">
+                                <p className="text-green-800 font-medium">🎉 Parfait ! La charge est bien répartie !</p>
+                            </div>
+                        )}
+                        <div className="flex justify-between mb-2 text-sm">
+                            <span className="font-semibold text-pink-600">{users[0].emoji} {users[0].name}: {stats.parent1.share}%</span>
+                            <span className="font-semibold text-blue-600">{users[1].emoji} {users[1].name}: {stats.parent2.share}%</span>
+                        </div>
+                        <div className="w-full h-12 bg-gray-200 rounded-full overflow-hidden flex">
+                            <div className="h-full flex transition-all" style={{ width: `${stats.parent1.share}%` }}>
+                                <div className="bg-pink-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.done / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.done > 0 && `✓${stats.parent1.done}`}</div>
+                                <div className="bg-pink-200 flex items-center justify-center text-pink-700 text-sm" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.todo / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.todo > 0 && stats.parent1.todo}</div>
+                            </div>
+                            <div className="h-full flex transition-all" style={{ width: `${stats.parent2.share}%` }}>
+                                <div className="bg-blue-200 flex items-center justify-center text-blue-700 text-sm" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.todo / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.todo > 0 && stats.parent2.todo}</div>
+                                <div className="bg-blue-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.done / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.done > 0 && `✓${stats.parent2.done}`}</div>
+                            </div>
+                        </div>
+                        <div className="text-center mt-4 bg-white rounded-xl p-3">
+                            <p className="font-medium">{stats.totalDone} / {stats.totalTasks} tâches accomplies</p>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderGuard = () => {
+                const updateGuardSlot = (date, period, personId) => {
+                    const existing = guardSchedule.find(g => g.date === date);
+                    if (existing) {
+                        setGuardSchedule(guardSchedule.map(g => g.date === date ? { ...g, [period]: personId } : g));
+                    } else {
+                        setGuardSchedule([...guardSchedule, { id: Date.now(), date, morning: period === 'morning' ? personId : null, afternoon: period === 'afternoon' ? personId : null, notes: '' }]);
+                    }
+                };
+                return (
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-2xl font-bold">👶 Garde</h2>
+                            <div className="flex gap-2">
+                                <button onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)} className="bg-purple-100 px-3 py-2 rounded-xl text-sm">←</button>
+                                <button onClick={() => setCurrentWeekOffset(0)} className="bg-purple-500 text-white px-3 py-2 rounded-xl text-sm">Aujourd'hui</button>
+                                <button onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)} className="bg-purple-100 px-3 py-2 rounded-xl text-sm">→</button>
+                            </div>
+                        </div>
+                        {guardWeek.map(day => (
+                            <div key={day.date} className={`bg-white rounded-2xl shadow-lg p-5 ${day.date === '2026-01-23' ? 'border-2 border-purple-500' : ''}`}>
+                                <h3 className="font-bold text-lg mb-2">{day.dayName} {day.displayDate}</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-blue-50 rounded-xl p-3">
+                                        <p className="text-xs text-blue-600 mb-2">☀️ Matin</p>
+                                        <select value={day.morning || ''} onChange={(e) => updateGuardSlot(day.date, 'morning', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-sm">
+                                            <option value="">Non assigné</option>
+                                            {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="bg-orange-50 rounded-xl p-3">
+                                        <p className="text-xs text-orange-600 mb-2">🌙 Après-midi</p>
+                                        <select value={day.afternoon || ''} onChange={(e) => updateGuardSlot(day.date, 'afternoon', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-sm">
+                                            <option value="">Non assigné</option>
+                                            {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                {day.notes && <div className="mt-3 bg-purple-50 rounded-lg p-2"><p className="text-sm text-purple-700">📝 {day.notes}</p></div>}
+                            </div>
+                        ))}
+                    </div>
+                );
+            };
+
+            const renderFamily = () => (
+                <div className="space-y-4">
+                    <h2 className="text-2xl font-bold">👨‍👩‍👧 Infos Famille</h2>
+                    <div className="bg-white rounded-2xl shadow-lg p-5">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🚨</span> Urgences</h3>
+                            <button onClick={() => setEditingInfo({ section: 'urgences', type: 'phone' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                        </div>
+                        {familyInfo.urgences.map(item => (
+                            <div key={item.id} className="py-2 border-b last:border-0 flex justify-between">
+                                <span className="text-gray-700">{item.label}</span>
+                                <div className="flex gap-3 items-center">
+                                    <span className="font-semibold">{item.value}</span>
+                                    <button onClick={() => deleteFamilyInfo('urgences', item.id)} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="bg-white rounded-2xl shadow-lg p-5">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">📞</span> Numéros utiles</h3>
+                            <button onClick={() => setEditingInfo({ section: 'utiles', type: 'phone' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                        </div>
+                        {familyInfo.utiles.map(item => (
+                            <div key={item.id} className="py-2 border-b last:border-0 flex justify-between">
+                                <span className="text-gray-700">{item.label}</span>
+                                <div className="flex gap-3 items-center">
+                                    <span className="font-semibold">{item.value}</span>
+                                    <button onClick={() => deleteFamilyInfo('utiles', item.id)} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="bg-white rounded-2xl shadow-lg p-5">
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🔗</span> Liens</h3>
+                            <button onClick={() => setEditingInfo({ section: 'links', type: 'link' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                        </div>
+                        {familyInfo.links.map(item => (
+                            <div key={item.id} className="py-2 border-b last:border-0">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex-1">
+                                        <p className="text-gray-700">{item.label}</p>
+                                        <a href={item.value} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">{item.value}</a>
+                                    </div>
+                                    <button onClick={() => deleteFamilyInfo('links', item.id)} className="text-red-400 ml-3"><Icon name="trash" size={16} /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    {editingInfo && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
+                                <h3 className="text-xl font-bold mb-4">Ajouter</h3>
+                                <input type="text" placeholder="Label" id="info-label" className="w-full px-4 py-3 border-2 rounded-xl mb-3" />
+                                <input type={editingInfo.type === 'link' ? 'url' : 'text'} placeholder={editingInfo.type === 'phone' ? 'Téléphone' : 'URL'} id="info-value" className="w-full px-4 py-3 border-2 rounded-xl mb-4" />
+                                <div className="flex gap-3">
+                                    <button onClick={() => setEditingInfo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl">Annuler</button>
+                                    <button onClick={() => {
+                                        const label = document.getElementById('info-label').value;
+                                        const value = document.getElementById('info-value').value;
+                                        if (label && value) {
+                                            addFamilyInfo(editingInfo.section, { label, value, type: editingInfo.type });
+                                            setEditingInfo(null);
+                                        }
+                                    }} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl">Ajouter</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+
+            const renderSettings = () => (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold">⚙️ Réglages</h2>
+                    <div className="bg-white rounded-2xl shadow-lg p-5">
+                        <h3 className="font-bold mb-4 flex items-center gap-2"><span className="text-2xl">👤</span> Profils</h3>
+                        {users.map(user => (
+                            <div key={user.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-3xl">{user.emoji}</span>
+                                    <span className="font-semibold">{user.name}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+
+            // MAIN RENDER
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 pb-44">
+                    <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-5 shadow-xl">
+                        <div className="flex justify-between max-w-4xl mx-auto">
+                            <div>
+                                <h1 className="text-2xl font-bold">Plateforme Ratours</h1>
+                                <p className="text-purple-100 text-sm">{currentUserData.emoji} {currentUserData.name}</p>
+                            </div>
+                            <div className="flex gap-2">
+                                {isAuthenticated && gsheets.hasSpreadsheet() && (
+                                    <button onClick={syncFromCloud} disabled={isSyncing} className="bg-white bg-opacity-20 px-4 py-2 rounded-xl flex items-center gap-2">
+                                        <Icon name="sync" size={18} className={isSyncing ? 'animate-spin' : ''} />
+                                        {lastSync && <span className="text-xs">{lastSync.toLocaleTimeString()}</span>}
+                                    </button>
+                                )}
+                                <button onClick={() => setCurrentUser(null)} className="bg-white bg-opacity-20 px-4 py-2 rounded-xl">
+                                    <Icon name="logout" size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 max-w-4xl mx-auto">
+                        {activeTab === 'dashboard' && renderDashboard()}
+                        {activeTab === 'calendar' && renderCalendar()}
+                        {activeTab === 'todos' && renderTodos()}
+                        {activeTab === 'courses' && renderCourses()}
+                        {activeTab === 'menus' && renderMenus()}
+                        {activeTab === 'stats' && renderStats()}
+                        {activeTab === 'guard' && renderGuard()}
+                        {activeTab === 'family' && renderFamily()}
+                        {activeTab === 'settings' && renderSettings()}
+                    </div>
+
+                    <button onClick={() => setShowAddModal(true)} className="fixed bottom-40 right-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full p-5 shadow-2xl hover:scale-110 transition-transform z-40">
+                        <Icon name="plus" size={28} />
+                    </button>
+
+                    {showAddModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-2xl font-bold">Ajouter</h3>
+                                    <button onClick={() => { setShowAddModal(false); setAddType(''); }} className="text-gray-400">
+                                        <Icon name="x" size={28} />
+                                    </button>
+                                </div>
+                                {!addType ? (
+                                    <div className="space-y-3">
+                                        <button onClick={() => setAddType('event')} className="w-full bg-blue-50 hover:bg-blue-100 p-5 rounded-2xl text-left flex items-center gap-3">
+                                            <span className="text-3xl">📅</span><span className="font-semibold text-lg">Événement</span>
+                                        </button>
+                                        <button onClick={() => setAddType('todo')} className="w-full bg-green-50 hover:bg-green-100 p-5 rounded-2xl text-left flex items-center gap-3">
+                                            <span className="text-3xl">✅</span><span className="font-semibold text-lg">Tâche</span>
+                                        </button>
+                                        <button onClick={() => setAddType('course')} className="w-full bg-orange-50 hover:bg-orange-100 p-5 rounded-2xl text-left flex items-center gap-3">
+                                            <span className="text-3xl">🛒</span><span className="font-semibold text-lg">Course</span>
+                                        </button>
+                                        <button onClick={() => setAddType('menu')} className="w-full bg-purple-50 hover:bg-purple-100 p-5 rounded-2xl text-left flex items-center gap-3">
+                                            <span className="text-3xl">🍽️</span><span className="font-semibold text-lg">Menu</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <input type="text" placeholder={addType === 'course' ? 'Article' : addType === 'menu' ? 'Plat' : 'Titre'} value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl" />
+                                        {addType === 'menu' && (
+                                            <select value={newItem.day} onChange={(e) => setNewItem({ ...newItem, day: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                <option value="">Jour</option>
+                                                {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map(d => <option key={d} value={d}>{d}</option>)}
+                                            </select>
+                                        )}
+                                        {addType === 'event' && (
+                                            <>
+                                                <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl" />
+                                                <input type="time" value={newItem.time} onChange={(e) => setNewItem({ ...newItem, time: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl" />
+                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                    <option value="">Catégorie</option>
+                                                    {categories.events.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+                                                </select>
+                                            </>
+                                        )}
+                                        {addType === 'todo' && (
+                                            <>
+                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                    <option value="">Catégorie</option>
+                                                    {categories.todos.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+                                                </select>
+                                                <select value={newItem.priority} onChange={(e) => setNewItem({ ...newItem, priority: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                    <option value="low">⚪ Basse</option>
+                                                    <option value="medium">🟡 Moyenne</option>
+                                                    <option value="high">🔴 Haute</option>
+                                                </select>
+                                            </>
+                                        )}
+                                        {addType === 'course' && (
+                                            <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                {categories.courses.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+                                            </select>
+                                        )}
+                                        {(addType === 'event' || addType === 'todo') && (
+                                            <select value={newItem.assignedTo || ''} onChange={(e) => setNewItem({ ...newItem, assignedTo: parseInt(e.target.value) })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                <option value="">Assigner à...</option>
+                                                {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+                                            </select>
+                                        )}
+                                        <div className="flex gap-3 mt-6">
+                                            <button onClick={() => setAddType('')} className="flex-1 bg-gray-100 py-3 rounded-xl">Retour</button>
+                                            <button onClick={handleAdd} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl">Ajouter</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 shadow-2xl z-50">
+                        <div className="max-w-4xl mx-auto px-1 py-2">
+                            <div className="grid grid-cols-4 gap-1">
+                                {[
+                                    { id: 'dashboard', label: 'Accueil', emoji: '🏠' },
+                                    { id: 'calendar', label: 'Agenda', emoji: '📅' },
+                                    { id: 'todos', label: 'Tâches', emoji: '✅' },
+                                    { id: 'courses', label: 'Courses', emoji: '🛒' },
+                                ].map(tab => (
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-2xl ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-500'}`}>
+                                        <span className="text-2xl">{tab.emoji}</span>
+                                        <span className="text-xs">{tab.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-5 gap-1 mt-1">
+                                {[
+                                    { id: 'menus', label: 'Menus', emoji: '🍽️' },
+                                    { id: 'stats', label: 'Stats', emoji: '📊' },
+                                    { id: 'guard', label: 'Garde', emoji: '👶' },
+                                    { id: 'family', label: 'Infos', emoji: '👨‍👩‍👧' },
+                                    { id: 'settings', label: 'Réglages', emoji: '⚙️' },
+                                ].map(tab => (
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-2xl ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-500'}`}>
+                                        <span className="text-2xl">{tab.emoji}</span>
+                                        <span className="text-xs">{tab.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </nav>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
