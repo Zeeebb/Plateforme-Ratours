@@ -125,7 +125,10 @@
                 if (!objects || objects.length === 0) return [headers];
                 const rows = objects.map(obj => headers.map(header => {
                     const val = obj[header];
-                    return (val !== undefined && val !== null && !isNaN(val)) ? String(val) : '';
+                    // Filtrer SEULEMENT null, undefined et NaN NUMÉRIQUES
+                    if (val === null || val === undefined) return '';
+                    if (typeof val === 'number' && isNaN(val)) return '';
+                    return String(val);
                 }));
                 return [headers, ...rows];
             }
