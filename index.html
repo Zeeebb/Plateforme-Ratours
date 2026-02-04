@@ -123,7 +123,14 @@
 
             objectsToArray(objects, headers) {
                 if (!objects || objects.length === 0) return [headers];
-                const rows = objects.map(obj => headers.map(header => obj[header] !== undefined ? String(obj[header]) : ''));
+                const rows = objects.map(obj => headers.map(header => {
+                    const value = obj[header];
+                    // Gérer null, undefined, NaN
+                    if (value === null || value === undefined || (typeof value === 'number' && isNaN(value))) {
+                        return '';
+                    }
+                    return String(value);
+                }));
                 return [headers, ...rows];
             }
         }
@@ -239,9 +246,23 @@
                 try {
                     const todosData = await gsheets.readSheet('todos');
                     if (todosData.length > 1) {
-                        setTodos(gsheets.arrayToObjects(todosData).map(t => ({
-                            ...t, id: parseInt(t.id), assignedTo: parseInt(t.assignedTo), done: t.done === 'true'
-                        })));
+                        setTodos(gsheets.arrayToObjects(todosData).map(t => {
+                            // Gérer proprement assignedTo pour éviter NaN
+                            let assignedTo = null;
+                            if (t.assignedTo && t.assignedTo !== 'null' && t.assignedTo !== 'NaN' && t.assignedTo !== '') {
+                                const parsed = parseInt(t.assignedTo);
+                                if (!isNaN(parsed)) {
+                                    assignedTo = parsed;
+                                }
+                            }
+                            
+                            return {
+                                ...t, 
+                                id: parseInt(t.id), 
+                                assignedTo: assignedTo, 
+                                done: t.done === 'true'
+                            };
+                        }));
                     }
                     const coursesData = await gsheets.readSheet('courses');
                     if (coursesData.length > 1) {
@@ -351,10 +372,19 @@
                     setShowAddModal(false);
                     setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
                 } else if (addType === 'todo' && newItem.title) {
+                    // Gérer proprement l'assignation (éviter NaN)
+                    let assignTo = null;
+                    if (newItem.assignedTo && !isNaN(newItem.assignedTo)) {
+                        assignTo = parseInt(newItem.assignedTo);
+                    }
+                    
                     setTodos([...todos, {
-                        id: Date.now(), title: newItem.title, category: newItem.category || 'general',
-                        priority: newItem.priority, done: false, 
-                        assignedTo: newItem.assignedTo !== undefined && newItem.assignedTo !== null ? newItem.assignedTo : null
+                        id: Date.now(), 
+                        title: newItem.title, 
+                        category: newItem.category || 'general',
+                        priority: newItem.priority, 
+                        done: false, 
+                        assignedTo: assignTo
                     }]);
                     setShowAddModal(false);
                     setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
