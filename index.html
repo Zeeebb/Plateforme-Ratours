@@ -22,6 +22,7 @@
         
         // CLIENT ID GOOGLE
         const GOOGLE_CLIENT_ID = '988519105715-eqfihmrhgotpkund2ub9nvb3ov7nfde4.apps.googleusercontent.com';
+        const SPREADSHEET_ID = '186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw'; // ID fixe du Google Sheet
         
         const Icon = ({ name, size = 24 }) => {
             const icons = {
@@ -38,7 +39,7 @@
             constructor() {
                 this.accessToken = null;
                 this.tokenClient = null;
-                this.spreadsheetId = localStorage.getItem('spreadsheet_id') || null;
+                this.spreadsheetId = SPREADSHEET_ID; // Utiliser l'ID fixe
             }
 
             initialize() {
@@ -511,25 +512,8 @@
                 const success = await gsheets.requestAuth();
                 if (success) {
                     setIsAuthenticated(true);
-                    if (!gsheets.hasSpreadsheet()) {
-                        setIsCreatingSheet(true);
-                        const result = await gsheets.createSpreadsheet();
-                        setIsCreatingSheet(false);
-                        if (result) {
-                            setSpreadsheetUrl(result.url);
-                            alert(`✅ Google Sheet créé !\\n\\n${result.url}`);
-                            await syncToCloud();
-                        }
-                    } else {
-                        // Google Sheet existant : migration automatique
-                        setIsMigrating(true);
-                        const migrated = await gsheets.migrateSpreadsheet();
-                        setIsMigrating(false);
-                        if (migrated) {
-                            console.log('✅ Migration terminée !');
-                        }
-                        await syncFromCloud();
-                    }
+                    console.log('✅ Authentifié ! Chargement des données...');
+                    await syncFromCloud();
                 }
             };
 
@@ -670,24 +654,17 @@
                             </div>
                             {isGoogleReady && !isAuthenticated && (
                                 <div className="mb-6 p-4 bg-blue-50 rounded-2xl border-2 border-blue-200">
-                                    <p className="text-sm text-blue-800 mb-3">✨ Un Google Sheet sera créé automatiquement</p>
-                                    <button onClick={handleGoogleLogin} disabled={isCreatingSheet} className="w-full bg-white border-2 border-gray-300 text-gray-700 px-4 py-3 rounded-xl hover:bg-gray-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-                                        {isCreatingSheet ? <><Icon name="cloud" size={20} className="animate-pulse" /><span className="font-medium">Création...</span></> : <><Icon name="cloud" size={20} /><span className="font-medium">Se connecter avec Google</span></>}
+                                    <p className="text-sm text-blue-800 mb-3">☁️ Connectez-vous pour synchroniser avec votre Google Sheet</p>
+                                    <button onClick={handleGoogleLogin} className="w-full bg-white border-2 border-gray-300 text-gray-700 px-4 py-3 rounded-xl hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
+                                        <Icon name="cloud" size={20} />
+                                        <span className="font-medium">Se connecter avec Google</span>
                                     </button>
                                 </div>
                             )}
-                            {isMigrating && (
-                                <div className="mb-6 p-4 bg-yellow-50 rounded-2xl border-2 border-yellow-200">
-                                    <div className="flex items-center gap-2">
-                                        <Icon name="sync" size={20} className="animate-spin" />
-                                        <p className="text-sm text-yellow-800 font-medium">🔄 Mise à jour du Google Sheet...</p>
-                                    </div>
-                                </div>
-                            )}
-                            {isAuthenticated && spreadsheetUrl && (
+                            {isAuthenticated && (
                                 <div className="mb-6 p-4 bg-green-50 rounded-2xl border-2 border-green-200">
-                                    <p className="text-sm text-green-800 mb-2">✅ Connecté</p>
-                                    <a href={spreadsheetUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">Ouvrir le Sheet →</a>
+                                    <p className="text-sm text-green-800 mb-2">✅ Connecté à votre Google Sheet</p>
+                                    <a href="https://docs.google.com/spreadsheets/d/186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw" target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">Ouvrir le Google Sheet →</a>
                                 </div>
                             )}
                             <div className="space-y-4">
