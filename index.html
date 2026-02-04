@@ -200,9 +200,25 @@
                 try {
                     const todosData = await gsheets.readSheet('todos');
                     if (todosData.length > 1) {
-                        setTodos(gsheets.arrayToObjects(todosData).map(t => ({
-                            ...t, id: parseInt(t.id), assignedTo: t.assignedTo ? parseInt(t.assignedTo) : null, done: t.done === 'true'
-                        })));
+                        setTodos(gsheets.arrayToObjects(todosData).map(t => {
+                            // Parser proprement assignedTo
+                            let assignedTo = null;
+                            if (t.assignedTo && t.assignedTo !== '' && t.assignedTo !== 'null' && t.assignedTo !== 'undefined') {
+                                const parsed = parseInt(t.assignedTo);
+                                if (!isNaN(parsed)) {
+                                    assignedTo = parsed;
+                                }
+                            }
+                            
+                            return {
+                                id: parseInt(t.id) || Date.now(),
+                                title: t.title || '',
+                                category: t.category || 'general',
+                                priority: t.priority || 'medium',
+                                done: t.done === 'true',
+                                assignedTo: assignedTo
+                            };
+                        }).filter(t => t.title)); // Filtrer les lignes vides
                     }
                     const coursesData = await gsheets.readSheet('courses');
                     if (coursesData.length > 1) {
@@ -352,8 +368,13 @@
                             )}
                             {isAuthenticated && (
                                 <div className="mb-6 p-4 bg-green-50 rounded-2xl border-2 border-green-200">
-                                    <p className="text-sm text-green-800 mb-2">✅ Connecté</p>
-                                    <a href="https://docs.google.com/spreadsheets/d/186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw" target="_blank" className="text-xs text-blue-600">Ouvrir le Sheet →</a>
+                                    <p className="text-sm text-green-800 mb-2">✅ Connecté à Google</p>
+                                    <a href="https://docs.google.com/spreadsheets/d/186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw" target="_blank" className="text-xs text-blue-600 block mb-2">Ouvrir le Sheet →</a>
+                                    <button onClick={() => {
+                                        gsheets.logout();
+                                        setIsAuthenticated(false);
+                                        alert('Déconnecté de Google. Actualisez la page.');
+                                    }} className="text-xs text-red-600 underline">Se déconnecter de Google</button>
                                 </div>
                             )}
                             <div className="space-y-4">
