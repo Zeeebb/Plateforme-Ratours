@@ -147,12 +147,12 @@
                 { id: 2, name: 'Papa', color: 'bg-blue-400', emoji: '👨' },
             ]);
 
-            const [externalPeople] = useState([
+            const [externalPeople, setExternalPeople] = useState([
                 { id: 4, name: 'Mamie', emoji: '👵' },
                 { id: 5, name: 'Nounou', emoji: '🧑‍🍼' },
             ]);
 
-            const [categories] = useState({
+            const [categories, setCategories] = useState({
                 courses: [
                     { id: 'alimentaire', name: 'Alimentaire', emoji: '🥖' },
                     { id: 'enfant', name: 'Enfant', emoji: '🍼' },
@@ -339,20 +339,26 @@
                         category: newItem.category || 'general', assignedTo: [newItem.assignedTo || currentUser],
                         emoji: cat ? cat.emoji : '📅'
                     }]);
+                    setShowAddModal(false);
+                    setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
                 } else if (addType === 'todo' && newItem.title) {
                     setTodos([...todos, {
                         id: Date.now(), title: newItem.title, category: newItem.category || 'general',
                         priority: newItem.priority, done: false, assignedTo: newItem.assignedTo || currentUser
                     }]);
+                    setShowAddModal(false);
+                    setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
                 } else if (addType === 'course' && newItem.title) {
                     setCourses([...courses, {
                         id: Date.now(), item: newItem.title, category: newItem.category || 'alimentaire', checked: false
                     }]);
+                    // NE PAS fermer la modale pour les courses (ajout rapide)
+                    setNewItem({ ...newItem, title: '' }); // Juste vider le champ titre
                 } else if (addType === 'menu' && newItem.title && newItem.day) {
                     setMenus([...menus, { id: Date.now(), day: newItem.day, meal: newItem.title, emoji: '🍽️' }]);
+                    setShowAddModal(false);
+                    setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
                 }
-                setShowAddModal(false);
-                setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
             };
 
             const toggleTodo = (id) => setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
@@ -734,6 +740,132 @@
                                 )}
                             </div>
                         )}
+
+                        {activeTab === 'settings' && (
+                            <div className="space-y-4">
+                                <h2 className="text-2xl font-bold">⚙️ Réglages</h2>
+                                
+                                {/* Personnes externes */}
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">👥</span> Personnes externes</h3>
+                                        <button onClick={() => {
+                                            const name = prompt('Nom de la personne :');
+                                            const emoji = prompt('Emoji (ex: 👴) :');
+                                            if (name && emoji) {
+                                                const maxId = Math.max(...externalPeople.map(p => p.id), ...users.map(u => u.id));
+                                                setExternalPeople([...externalPeople, { id: maxId + 1, name, emoji }]);
+                                            }
+                                        }} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                    </div>
+                                    {externalPeople.map(person => (
+                                        <div key={person.id} className="py-2 border-b last:border-0 flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">{person.emoji}</span>
+                                                <span className="font-semibold">{person.name}</span>
+                                            </div>
+                                            <button onClick={() => setExternalPeople(externalPeople.filter(p => p.id !== person.id))} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Catégories Courses */}
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🛒</span> Catégories Courses</h3>
+                                        <button onClick={() => {
+                                            const name = prompt('Nom de la catégorie :');
+                                            const emoji = prompt('Emoji (ex: 🥗) :');
+                                            if (name && emoji) {
+                                                const id = name.toLowerCase().replace(/\s+/g, '-');
+                                                setCategories({
+                                                    ...categories,
+                                                    courses: [...categories.courses, { id, name, emoji }]
+                                                });
+                                            }
+                                        }} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                    </div>
+                                    {categories.courses.map(cat => (
+                                        <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">{cat.emoji}</span>
+                                                <span>{cat.name}</span>
+                                            </div>
+                                            <button onClick={() => {
+                                                setCategories({
+                                                    ...categories,
+                                                    courses: categories.courses.filter(c => c.id !== cat.id)
+                                                });
+                                            }} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Catégories Tâches */}
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">✅</span> Catégories Tâches</h3>
+                                        <button onClick={() => {
+                                            const name = prompt('Nom de la catégorie :');
+                                            const emoji = prompt('Emoji (ex: 💼) :');
+                                            if (name && emoji) {
+                                                const id = name.toLowerCase().replace(/\s+/g, '-');
+                                                setCategories({
+                                                    ...categories,
+                                                    todos: [...categories.todos, { id, name, emoji }]
+                                                });
+                                            }
+                                        }} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                    </div>
+                                    {categories.todos.map(cat => (
+                                        <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">{cat.emoji}</span>
+                                                <span>{cat.name}</span>
+                                            </div>
+                                            <button onClick={() => {
+                                                setCategories({
+                                                    ...categories,
+                                                    todos: categories.todos.filter(c => c.id !== cat.id)
+                                                });
+                                            }} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Catégories Événements */}
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">📅</span> Catégories Événements</h3>
+                                        <button onClick={() => {
+                                            const name = prompt('Nom de la catégorie :');
+                                            const emoji = prompt('Emoji (ex: 🎉) :');
+                                            if (name && emoji) {
+                                                const id = name.toLowerCase().replace(/\s+/g, '-');
+                                                setCategories({
+                                                    ...categories,
+                                                    events: [...categories.events, { id, name, emoji }]
+                                                });
+                                            }
+                                        }} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                    </div>
+                                    {categories.events.map(cat => (
+                                        <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">{cat.emoji}</span>
+                                                <span>{cat.name}</span>
+                                            </div>
+                                            <button onClick={() => {
+                                                setCategories({
+                                                    ...categories,
+                                                    events: categories.events.filter(c => c.id !== cat.id)
+                                                });
+                                            }} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <button onClick={() => setShowAddModal(true)} className="fixed bottom-40 right-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full p-5 shadow-2xl hover:scale-110 transition-transform z-40">
@@ -826,12 +958,13 @@
                                     </button>
                                 ))}
                             </div>
-                            <div className="grid grid-cols-4 gap-1 mt-1">
+                            <div className="grid grid-cols-5 gap-1 mt-1">
                                 {[
                                     { id: 'menus', label: 'Menus', emoji: '🍽️' },
                                     { id: 'stats', label: 'Stats', emoji: '📊' },
                                     { id: 'guard', label: 'Garde', emoji: '👶' },
                                     { id: 'family', label: 'Infos', emoji: '👨‍👩‍👧' },
+                                    { id: 'settings', label: 'Réglages', emoji: '⚙️' },
                                 ].map(tab => (
                                     <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-2xl ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-500'}`}>
                                         <span className="text-2xl">{tab.emoji}</span>
