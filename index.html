@@ -211,14 +211,7 @@
                 const initGoogle = async () => {
                     await gsheets.initialize();
                     setIsGoogleReady(true);
-                    const isAuth = gsheets.isAuthenticated();
-                    setIsAuthenticated(isAuth);
-                    
-                    // Si déjà authentifié, charger les données automatiquement
-                    if (isAuth && gsheets.hasSpreadsheet()) {
-                        console.log('✅ Déjà authentifié, chargement des données...');
-                        await syncFromCloud();
-                    }
+                    setIsAuthenticated(gsheets.isAuthenticated());
                 };
                 if (window.google) {
                     initGoogle();
@@ -231,6 +224,14 @@
                     }, 100);
                 }
             }, []);
+
+            // Charger les données du Google Sheet quand currentUser est défini
+            useEffect(() => {
+                if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
+                    console.log('👤 Utilisateur connecté, chargement des données...');
+                    syncFromCloud();
+                }
+            }, [currentUser]);
 
             const syncFromCloud = async () => {
                 if (!isAuthenticated) return;
