@@ -139,10 +139,17 @@
             const [activeTab, setActiveTab] = useState('dashboard');
             const [showAddModal, setShowAddModal] = useState(false);
             const [addType, setAddType] = useState('');
+            const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
+            const [editingInfo, setEditingInfo] = useState(null);
 
             const [users] = useState([
                 { id: 1, name: 'Maman', color: 'bg-pink-400', emoji: '👩' },
                 { id: 2, name: 'Papa', color: 'bg-blue-400', emoji: '👨' },
+            ]);
+
+            const [externalPeople] = useState([
+                { id: 4, name: 'Mamie', emoji: '👵' },
+                { id: 5, name: 'Nounou', emoji: '🧑‍🍼' },
             ]);
 
             const [categories] = useState({
@@ -155,8 +162,18 @@
                     { id: 'rdv', name: 'RDV', emoji: '📞' },
                     { id: 'enfant', name: 'Enfant', emoji: '👶' },
                     { id: 'maison', name: 'Maison', emoji: '🏠' },
+                ],
+                events: [
+                    { id: 'medical', name: 'Médical', emoji: '🏥' },
+                    { id: 'voyage', name: 'Voyage', emoji: '✈️' },
+                    { id: 'ecole', name: 'École', emoji: '🏫' },
+                    { id: 'famille', name: 'Famille', emoji: '👨‍👩‍👧' },
                 ]
             });
+
+            const [events, setEvents] = useState([
+                { id: 1, title: 'RDV pédiatre', date: '2026-01-24', category: 'medical', assignedTo: [1], emoji: '🏥' },
+            ]);
 
             const [todos, setTodos] = useState([
                 { id: 1, title: 'Prendre RDV dentiste', category: 'rdv', priority: 'high', done: false, assignedTo: 1 },
@@ -170,12 +187,25 @@
 
             const [menus, setMenus] = useState([
                 { id: 1, day: 'Lundi', meal: 'Pâtes bolognaise', emoji: '🍝' },
-                { id: 2, day: 'Mardi', meal: 'Poulet rôti', emoji: '🗡' },
+                { id: 2, day: 'Mardi', meal: 'Poulet rôti', emoji: '🍗' },
             ]);
 
-            const [newItem, setNewItem] = useState({
-                title: '', category: '', priority: 'medium', assignedTo: null, day: ''
+            const [guardSchedule, setGuardSchedule] = useState([
+                { id: 1, date: '2026-01-20', morning: 1, afternoon: 2, notes: '' },
+            ]);
+
+            const [familyInfo, setFamilyInfo] = useState({
+                urgences: [{ id: 1, label: 'Pédiatre', value: '01 23 45 67 89', type: 'phone' }],
+                utiles: [{ id: 1, label: 'Crèche', value: '01 23 45 67 90', type: 'phone' }],
+                links: [{ id: 1, label: 'Paris Famille', value: 'https://www.paris.fr', type: 'link' }],
+                notes: [{ id: 1, label: 'Horaires', value: 'Mer 14h-18h', type: 'text' }],
             });
+
+            const [newItem, setNewItem] = useState({
+                title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: ''
+            });
+
+            const allPeople = [...users, ...externalPeople];
 
             useEffect(() => {
                 const initGoogle = async () => {
@@ -217,6 +247,33 @@
                             ...m, id: parseInt(m.id)
                         })));
                     }
+                    const eventsData = await gsheets.readSheet('events');
+                    if (eventsData.length > 1) {
+                        setEvents(gsheets.arrayToObjects(eventsData).map(e => ({
+                            ...e, id: parseInt(e.id), assignedTo: JSON.parse(e.assignedTo || '[]')
+                        })));
+                    }
+                    const guardData = await gsheets.readSheet('guardSchedule');
+                    if (guardData.length > 1) {
+                        setGuardSchedule(gsheets.arrayToObjects(guardData).map(g => ({
+                            ...g, id: parseInt(g.id),
+                            morning: g.morning ? parseInt(g.morning) : null,
+                            afternoon: g.afternoon ? parseInt(g.afternoon) : null
+                        })));
+                    }
+                    const familyData = await gsheets.readSheet('familyInfo');
+                    if (familyData.length > 1) {
+                        const familyObjects = gsheets.arrayToObjects(familyData);
+                        const reconstructed = { urgences: [], utiles: [], links: [], notes: [] };
+                        familyObjects.forEach(item => {
+                            if (reconstructed[item.section]) {
+                                reconstructed[item.section].push({
+                                    id: parseInt(item.id), label: item.label, value: item.value, type: item.type
+                                });
+                            }
+                        });
+                        setFamilyInfo(reconstructed);
+                    }
                     setLastSync(new Date());
                     console.log('✅ Chargement terminé');
                 } catch (error) {
@@ -233,6 +290,16 @@
                     await gsheets.writeSheet('todos', gsheets.objectsToArray(todos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
                     await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
                     await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
+                    const eventsForSheet = events.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
+                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                    await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, ['id', 'date', 'morning', 'afternoon', 'notes']));
+                    const flatFamilyInfo = [];
+                    Object.entries(familyInfo).forEach(([section, items]) => {
+                        items.forEach(item => {
+                            flatFamilyInfo.push({ section, id: item.id, label: item.label, value: item.value, type: item.type });
+                        });
+                    });
+                    await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
                     setLastSync(new Date());
                     console.log('✅ Sauvegarde OK');
                 } catch (error) {
@@ -254,10 +321,17 @@
                     const timer = setTimeout(() => syncToCloud(), 1000);
                     return () => clearTimeout(timer);
                 }
-            }, [todos, courses, menus, isAuthenticated, currentUser]);
+            }, [todos, courses, menus, events, guardSchedule, familyInfo, isAuthenticated, currentUser]);
 
             const handleAdd = () => {
-                if (addType === 'todo' && newItem.title) {
+                if (addType === 'event' && newItem.title && newItem.date) {
+                    const cat = categories.events.find(c => c.id === newItem.category);
+                    setEvents([...events, {
+                        id: Date.now(), title: newItem.title, date: newItem.date, time: newItem.time || '',
+                        category: newItem.category || 'general', assignedTo: [newItem.assignedTo || currentUser],
+                        emoji: cat ? cat.emoji : '📅'
+                    }]);
+                } else if (addType === 'todo' && newItem.title) {
                     setTodos([...todos, {
                         id: Date.now(), title: newItem.title, category: newItem.category || 'general',
                         priority: newItem.priority, done: false, assignedTo: newItem.assignedTo || currentUser
@@ -270,14 +344,74 @@
                     setMenus([...menus, { id: Date.now(), day: newItem.day, meal: newItem.title, emoji: '🍽️' }]);
                 }
                 setShowAddModal(false);
-                setNewItem({ title: '', category: '', priority: 'medium', assignedTo: null, day: '' });
+                setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
             };
 
             const toggleTodo = (id) => setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
             const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
+            const deleteEvent = (id) => setEvents(events.filter(e => e.id !== id));
             const deleteTodo = (id) => setTodos(todos.filter(t => t.id !== id));
             const deleteCourse = (id) => setCourses(courses.filter(c => c.id !== id));
             const deleteMenu = (id) => setMenus(menus.filter(m => m.id !== id));
+
+            const addFamilyInfo = (section, item) => {
+                setFamilyInfo({ ...familyInfo, [section]: [...familyInfo[section], { ...item, id: Date.now() }] });
+            };
+
+            const deleteFamilyInfo = (section, id) => {
+                setFamilyInfo({ ...familyInfo, [section]: familyInfo[section].filter(item => item.id !== id) });
+            };
+
+            const calculateTaskStats = () => {
+                const parent1Tasks = todos.filter(t => t.assignedTo === 1);
+                const parent2Tasks = todos.filter(t => t.assignedTo === 2);
+                const parent1Done = parent1Tasks.filter(t => t.done).length;
+                const parent2Done = parent2Tasks.filter(t => t.done).length;
+                const totalTasks = parent1Tasks.length + parent2Tasks.length;
+                const parent1Share = totalTasks > 0 ? Math.round((parent1Tasks.length / totalTasks) * 100) : 50;
+                const parent2Share = 100 - parent1Share;
+                return {
+                    parent1: { total: parent1Tasks.length, done: parent1Done, todo: parent1Tasks.length - parent1Done, share: parent1Share },
+                    parent2: { total: parent2Tasks.length, done: parent2Done, todo: parent2Tasks.length - parent2Done, share: parent2Share },
+                    totalTasks, totalDone: parent1Done + parent2Done, isBalanced: Math.abs(parent1Share - 50) <= 10
+                };
+            };
+
+            const generateGuardWeek = () => {
+                const baseDate = new Date('2026-01-20');
+                const weekStart = new Date(baseDate);
+                weekStart.setDate(weekStart.getDate() + (currentWeekOffset * 7));
+                const week = [];
+                const dayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+                for (let i = 0; i < 7; i++) {
+                    const date = new Date(weekStart);
+                    date.setDate(date.getDate() + i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    const existing = guardSchedule.find(g => g.date === dateStr);
+                    week.push({
+                        date: dateStr, dayName: dayNames[date.getDay()],
+                        displayDate: `${date.getDate()}/${date.getMonth() + 1}`,
+                        morning: existing?.morning || null, afternoon: existing?.afternoon || null,
+                        notes: existing?.notes || '', id: existing?.id || null
+                    });
+                }
+                return week;
+            };
+
+            const updateGuardSlot = (date, period, personId) => {
+                const existing = guardSchedule.find(g => g.date === date);
+                if (existing) {
+                    setGuardSchedule(guardSchedule.map(g => g.date === date ? { ...g, [period]: personId } : g));
+                } else {
+                    setGuardSchedule([...guardSchedule, {
+                        id: Date.now(), date, morning: period === 'morning' ? personId : null,
+                        afternoon: period === 'afternoon' ? personId : null, notes: ''
+                    }]);
+                }
+            };
+
+            const stats = calculateTaskStats();
+            const guardWeek = generateGuardWeek();
 
             if (!currentUser) {
                 return (
@@ -320,7 +454,7 @@
             const myTodos = todos.filter(t => !t.done && t.assignedTo === currentUser);
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 pb-24">
+                <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 pb-44">
                     <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-5 shadow-xl">
                         <div className="flex justify-between max-w-4xl mx-auto">
                             <div>
@@ -366,6 +500,22 @@
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'calendar' && (
+                            <div className="space-y-4">
+                                <h2 className="text-2xl font-bold">📅 Agenda</h2>
+                                {events.map(event => (
+                                    <div key={event.id} className="bg-white rounded-2xl shadow-lg p-5 flex items-start gap-4">
+                                        <span className="text-4xl">{event.emoji}</span>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold text-gray-800 mb-1">{event.title}</h3>
+                                            <p className="text-sm text-gray-600">{event.date} {event.time}</p>
+                                        </div>
+                                        <button onClick={() => deleteEvent(event.id)} className="text-red-400"><Icon name="x" size={20} /></button>
+                                    </div>
+                                ))}
                             </div>
                         )}
 
@@ -438,9 +588,147 @@
                                 ))}
                             </div>
                         )}
+
+                        {activeTab === 'stats' && (
+                            <div className="space-y-6">
+                                <h2 className="text-2xl font-bold">📊 Statistiques</h2>
+                                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-6 border-2 border-purple-200">
+                                    <h3 className="text-xl font-bold mb-4">⚖️ Équilibre parental</h3>
+                                    {stats.isBalanced && stats.totalTasks > 0 && (
+                                        <div className="bg-green-100 border border-green-300 rounded-xl p-3 mb-4">
+                                            <p className="text-green-800 font-medium">🎉 Parfait ! La charge est bien répartie !</p>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between mb-2 text-sm">
+                                        <span className="font-semibold text-pink-600">{users[0].emoji} {users[0].name}: {stats.parent1.share}%</span>
+                                        <span className="font-semibold text-blue-600">{users[1].emoji} {users[1].name}: {stats.parent2.share}%</span>
+                                    </div>
+                                    <div className="w-full h-12 bg-gray-200 rounded-full overflow-hidden flex">
+                                        <div className="h-full flex transition-all" style={{ width: `${stats.parent1.share}%` }}>
+                                            <div className="bg-pink-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.done / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.done > 0 && `✓${stats.parent1.done}`}</div>
+                                            <div className="bg-pink-200 flex items-center justify-center text-pink-700 text-sm" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.todo / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.todo > 0 && stats.parent1.todo}</div>
+                                        </div>
+                                        <div className="h-full flex transition-all" style={{ width: `${stats.parent2.share}%` }}>
+                                            <div className="bg-blue-200 flex items-center justify-center text-blue-700 text-sm" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.todo / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.todo > 0 && stats.parent2.todo}</div>
+                                            <div className="bg-blue-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.done / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.done > 0 && `✓${stats.parent2.done}`}</div>
+                                        </div>
+                                    </div>
+                                    <div className="text-center mt-4 bg-white rounded-xl p-3">
+                                        <p className="font-medium">{stats.totalDone} / {stats.totalTasks} tâches accomplies</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'guard' && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-2xl font-bold">👶 Garde</h2>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)} className="bg-purple-100 px-3 py-2 rounded-xl text-sm">← Préc.</button>
+                                        <button onClick={() => setCurrentWeekOffset(0)} className="bg-purple-500 text-white px-3 py-2 rounded-xl text-sm">Aujourd'hui</button>
+                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)} className="bg-purple-100 px-3 py-2 rounded-xl text-sm">Suiv. →</button>
+                                    </div>
+                                </div>
+                                {guardWeek.map(day => (
+                                    <div key={day.date} className="bg-white rounded-2xl shadow-lg p-5">
+                                        <h3 className="font-bold text-lg mb-2">{day.dayName} {day.displayDate}</h3>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-blue-50 rounded-xl p-3">
+                                                <p className="text-xs text-blue-600 mb-2">☀️ Matin</p>
+                                                <select value={day.morning || ''} onChange={(e) => updateGuardSlot(day.date, 'morning', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-sm">
+                                                    <option value="">Non assigné</option>
+                                                    {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="bg-orange-50 rounded-xl p-3">
+                                                <p className="text-xs text-orange-600 mb-2">🌙 Après-midi</p>
+                                                <select value={day.afternoon || ''} onChange={(e) => updateGuardSlot(day.date, 'afternoon', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-sm">
+                                                    <option value="">Non assigné</option>
+                                                    {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {activeTab === 'family' && (
+                            <div className="space-y-4">
+                                <h2 className="text-2xl font-bold">👨‍👩‍👧 Infos Famille</h2>
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🚨</span> Urgences</h3>
+                                        <button onClick={() => setEditingInfo({ section: 'urgences', type: 'phone' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                    </div>
+                                    {familyInfo.urgences.map(item => (
+                                        <div key={item.id} className="py-2 border-b last:border-0 flex justify-between">
+                                            <span className="text-gray-700">{item.label}</span>
+                                            <div className="flex gap-3 items-center">
+                                                <span className="font-semibold">{item.value}</span>
+                                                <button onClick={() => deleteFamilyInfo('urgences', item.id)} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">📞</span> Numéros utiles</h3>
+                                        <button onClick={() => setEditingInfo({ section: 'utiles', type: 'phone' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                    </div>
+                                    {familyInfo.utiles.map(item => (
+                                        <div key={item.id} className="py-2 border-b last:border-0 flex justify-between">
+                                            <span className="text-gray-700">{item.label}</span>
+                                            <div className="flex gap-3 items-center">
+                                                <span className="font-semibold">{item.value}</span>
+                                                <button onClick={() => deleteFamilyInfo('utiles', item.id)} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🔗</span> Liens</h3>
+                                        <button onClick={() => setEditingInfo({ section: 'links', type: 'link' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                    </div>
+                                    {familyInfo.links.map(item => (
+                                        <div key={item.id} className="py-2 border-b last:border-0">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex-1">
+                                                    <p className="text-gray-700">{item.label}</p>
+                                                    <a href={item.value} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">{item.value}</a>
+                                                </div>
+                                                <button onClick={() => deleteFamilyInfo('links', item.id)} className="text-red-400 ml-3"><Icon name="trash" size={16} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {editingInfo && (
+                                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                                        <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
+                                            <h3 className="text-xl font-bold mb-4">Ajouter</h3>
+                                            <input type="text" placeholder="Label" id="info-label" className="w-full px-4 py-3 border-2 rounded-xl mb-3" />
+                                            <input type={editingInfo.type === 'link' ? 'url' : 'text'} placeholder={editingInfo.type === 'phone' ? 'Téléphone' : 'URL'} id="info-value" className="w-full px-4 py-3 border-2 rounded-xl mb-4" />
+                                            <div className="flex gap-3">
+                                                <button onClick={() => setEditingInfo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl">Annuler</button>
+                                                <button onClick={() => {
+                                                    const label = document.getElementById('info-label').value;
+                                                    const value = document.getElementById('info-value').value;
+                                                    if (label && value) {
+                                                        addFamilyInfo(editingInfo.section, { label, value, type: editingInfo.type });
+                                                        setEditingInfo(null);
+                                                    }
+                                                }} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl">Ajouter</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
-                    <button onClick={() => setShowAddModal(true)} className="fixed bottom-28 right-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full p-5 shadow-2xl hover:scale-110 transition-transform z-40">
+                    <button onClick={() => setShowAddModal(true)} className="fixed bottom-40 right-6 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full p-5 shadow-2xl hover:scale-110 transition-transform z-40">
                         <Icon name="plus" size={28} />
                     </button>
 
@@ -455,6 +743,9 @@
                                 </div>
                                 {!addType ? (
                                     <div className="space-y-3">
+                                        <button onClick={() => setAddType('event')} className="w-full bg-blue-50 hover:bg-blue-100 p-5 rounded-2xl text-left flex items-center gap-3">
+                                            <span className="text-3xl">📅</span><span className="font-semibold text-lg">Événement</span>
+                                        </button>
                                         <button onClick={() => setAddType('todo')} className="w-full bg-green-50 hover:bg-green-100 p-5 rounded-2xl text-left flex items-center gap-3">
                                             <span className="text-3xl">✅</span><span className="font-semibold text-lg">Tâche</span>
                                         </button>
@@ -473,6 +764,16 @@
                                                 <option value="">Jour</option>
                                                 {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map(d => <option key={d} value={d}>{d}</option>)}
                                             </select>
+                                        )}
+                                        {addType === 'event' && (
+                                            <>
+                                                <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl" />
+                                                <input type="time" value={newItem.time} onChange={(e) => setNewItem({ ...newItem, time: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl" />
+                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                    <option value="">Catégorie</option>
+                                                    {categories.events.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
+                                                </select>
+                                            </>
                                         )}
                                         {addType === 'todo' && (
                                             <>
@@ -507,9 +808,22 @@
                             <div className="grid grid-cols-4 gap-1">
                                 {[
                                     { id: 'dashboard', label: 'Accueil', emoji: '🏠' },
+                                    { id: 'calendar', label: 'Agenda', emoji: '📅' },
                                     { id: 'todos', label: 'Tâches', emoji: '✅' },
                                     { id: 'courses', label: 'Courses', emoji: '🛒' },
+                                ].map(tab => (
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-2xl ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-500'}`}>
+                                        <span className="text-2xl">{tab.emoji}</span>
+                                        <span className="text-xs">{tab.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-4 gap-1 mt-1">
+                                {[
                                     { id: 'menus', label: 'Menus', emoji: '🍽️' },
+                                    { id: 'stats', label: 'Stats', emoji: '📊' },
+                                    { id: 'guard', label: 'Garde', emoji: '👶' },
+                                    { id: 'family', label: 'Infos', emoji: '👨‍👩‍👧' },
                                 ].map(tab => (
                                     <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-2xl ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-500'}`}>
                                         <span className="text-2xl">{tab.emoji}</span>
