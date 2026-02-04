@@ -281,9 +281,24 @@
                     const newTodos = todos.filter(t => t.id !== id);
                     setTodos(newTodos);
                     
+                    alert('Suppression en cours...');
+                    
                     // Sync IMMÉDIATE avec les nouvelles valeurs
                     setTimeout(async () => {
-                        await gsheets.writeSheet('todos', gsheets.objectsToArray(newTodos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
+                        try {
+                            const data = gsheets.objectsToArray(newTodos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']);
+                            alert('Données préparées: ' + data.length + ' lignes');
+                            
+                            const success = await gsheets.writeSheet('todos', data);
+                            
+                            if (success) {
+                                alert('✅ SUPPRESSION SYNCHRONISÉE !');
+                            } else {
+                                alert('❌ ÉCHEC de writeSheet');
+                            }
+                        } catch (error) {
+                            alert('❌ ERREUR: ' + error.message);
+                        }
                     }, 500);
                 }
             };
