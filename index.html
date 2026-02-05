@@ -33,18 +33,19 @@
             return <span style={{ fontSize: size }}>{icons[name] || "•"}</span>;
         };
 
-        class GoogleSheetsService {
+        class GoogleServicesManager {
             constructor() {
                 this.accessToken = null;
                 this.tokenClient = null;
                 this.spreadsheetId = SPREADSHEET_ID;
+                this.calendarId = localStorage.getItem('ratours_calendar_id') || null;
             }
 
             initialize() {
                 return new Promise((resolve) => {
                     this.tokenClient = google.accounts.oauth2.initTokenClient({
                         client_id: GOOGLE_CLIENT_ID,
-                        scope: 'https://www.googleapis.com/auth/spreadsheets',
+                        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar',
                         callback: (response) => {
                             if (response.access_token) {
                                 this.accessToken = response.access_token;
@@ -133,6 +134,123 @@
                 }
             }
 
+            // === GOOGLE CALENDAR ===
+            
+            async createTestCalendar() {
+                try {
+                    const url = 'https://www.googleapis.com/calendar/v3/calendars';
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            summary: 'Ratours TEST',
+                            description: 'Calendrier de test pour Plateforme Ratours',
+                            timeZone: 'Europe/Paris'
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        console.error('Erreur création calendrier:', response.status);
+                        return null;
+                    }
+                    
+                    const calendar = await response.json();
+                    this.calendarId = calendar.id;
+                    localStorage.setItem('ratours_calendar_id', calendar.id);
+                    console.log('✅ Calendrier TEST créé:', calendar.id);
+                    return calendar.id;
+                } catch (error) {
+                    console.error('Erreur création calendrier:', error);
+                    return null;
+                }
+            }
+            
+            async listCalendarEvents() {
+                if (!this.calendarId) return [];
+                
+                try {
+                    const url = `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events?maxResults=100&singleEvents=true&orderBy=startTime`;
+                    const response = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                    });
+                    
+                    if (!response.ok) {
+                        console.error('Erreur lecture Calendar:', response.status);
+                        return [];
+                    }
+                    
+                    const data = await response.json();
+                    return data.items || [];
+                } catch (error) {
+                    console.error('Erreur lecture Calendar:', error);
+                    return [];
+                }
+            }
+            
+            async createCalendarEvent(event) {
+                if (!this.calendarId) return null;
+                
+                try {
+                    const url = `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            summary: event.title,
+                            description: `[Ratours] ${event.category}`,
+                            start: {
+                                dateTime: `${event.date}T${event.time || '09:00'}:00`,
+                                timeZone: 'Europe/Paris'
+                            },
+                            end: {
+                                dateTime: `${event.date}T${event.time ? this.addHour(event.time) : '10:00'}:00`,
+                                timeZone: 'Europe/Paris'
+                            }
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        console.error('Erreur création event:', response.status);
+                        return null;
+                    }
+                    
+                    const createdEvent = await response.json();
+                    return createdEvent.id;
+                } catch (error) {
+                    console.error('Erreur création event:', error);
+                    return null;
+                }
+            }
+            
+            async deleteCalendarEvent(calendarEventId) {
+                if (!this.calendarId) return false;
+                
+                try {
+                    const url = `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events/${calendarEventId}`;
+                    const response = await fetch(url, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                    });
+                    
+                    return response.ok;
+                } catch (error) {
+                    console.error('Erreur suppression event:', error);
+                    return false;
+                }
+            }
+            
+            addHour(time) {
+                const [h, m] = time.split(':');
+                const newHour = (parseInt(h) + 1).toString().padStart(2, '0');
+                return `${newHour}:${m}`;
+            }
+
             arrayToObjects(array) {
                 if (!array || array.length === 0) return [];
                 const headers = array[0];
@@ -150,7 +268,7 @@
             }
         }
 
-        const gsheets = new GoogleSheetsService();
+        const gsheets = new GoogleServicesManager();
 
         const App = () => {
             const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -321,7 +439,7 @@
                     await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
                     await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
                     const eventsForSheet = events.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
                     await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, ['id', 'date', 'morning', 'afternoon', 'notes']));
                     const flatFamilyInfo = [];
                     Object.entries(familyInfo).forEach(([section, items]) => {
@@ -365,11 +483,29 @@
             const handleAdd = () => {
                 if (addType === 'event' && newItem.title && newItem.date) {
                     const cat = categories.events.find(c => c.id === newItem.category);
-                    setEvents([...events, {
-                        id: Date.now(), title: newItem.title, date: newItem.date, time: newItem.time || '',
-                        category: newItem.category || 'general', assignedTo: [newItem.assignedTo || currentUser],
-                        emoji: cat ? cat.emoji : '📅'
-                    }]);
+                    const newEvent = {
+                        id: Date.now(), 
+                        title: newItem.title, 
+                        date: newItem.date, 
+                        time: newItem.time || '',
+                        category: newItem.category || 'general', 
+                        assignedTo: [newItem.assignedTo || currentUser],
+                        emoji: cat ? cat.emoji : '📅',
+                        calendarEventId: null
+                    };
+                    
+                    // Créer dans Calendar
+                    if (gsheets.calendarId) {
+                        gsheets.createCalendarEvent(newEvent).then(calendarEventId => {
+                            if (calendarEventId) {
+                                newEvent.calendarEventId = calendarEventId;
+                                setEvents([...events, newEvent]);
+                            }
+                        });
+                    } else {
+                        setEvents([...events, newEvent]);
+                    }
+                    
                     setShowAddModal(false);
                     setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
                 } else if (addType === 'todo' && newItem.title) {
@@ -410,11 +546,19 @@
             const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
             const deleteEvent = (id) => {
                 if (confirm('Supprimer cet événement ?')) {
+                    const eventToDelete = events.find(e => e.id === id);
                     const newEvents = events.filter(e => e.id !== id);
                     setEvents(newEvents);
+                    
                     setTimeout(async () => {
+                        // Supprimer de Calendar
+                        if (eventToDelete?.calendarEventId) {
+                            await gsheets.deleteCalendarEvent(eventToDelete.calendarEventId);
+                        }
+                        
+                        // Supprimer du Sheet
                         const eventsForSheet = newEvents.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
                     }, 500);
                 }
             };
