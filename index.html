@@ -398,7 +398,11 @@
                     const eventsData = await gsheets.readSheet('events');
                     if (eventsData.length > 1) {
                         setEvents(gsheets.arrayToObjects(eventsData).map(e => ({
-                            ...e, id: parseInt(e.id), assignedTo: JSON.parse(e.assignedTo || '[]')
+                            ...e, 
+                            id: parseInt(e.id) || Date.now(),
+                            assignedTo: e.assignedTo ? JSON.parse(e.assignedTo) : [],
+                            calendarEventId: e.calendarEventId || null,
+                            emoji: e.emoji || '📅'
                         })));
                     }
                     const guardData = await gsheets.readSheet('guardSchedule');
@@ -439,7 +443,7 @@
                     await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
                     await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
                     const eventsForSheet = events.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
+                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
                     await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, ['id', 'date', 'morning', 'afternoon', 'notes']));
                     const flatFamilyInfo = [];
                     Object.entries(familyInfo).forEach(([section, items]) => {
@@ -483,29 +487,15 @@
             const handleAdd = () => {
                 if (addType === 'event' && newItem.title && newItem.date) {
                     const cat = categories.events.find(c => c.id === newItem.category);
-                    const newEvent = {
+                    setEvents([...events, {
                         id: Date.now(), 
                         title: newItem.title, 
                         date: newItem.date, 
                         time: newItem.time || '',
                         category: newItem.category || 'general', 
                         assignedTo: [newItem.assignedTo || currentUser],
-                        emoji: cat ? cat.emoji : '📅',
-                        calendarEventId: null
-                    };
-                    
-                    // Créer dans Calendar
-                    if (gsheets.calendarId) {
-                        gsheets.createCalendarEvent(newEvent).then(calendarEventId => {
-                            if (calendarEventId) {
-                                newEvent.calendarEventId = calendarEventId;
-                                setEvents([...events, newEvent]);
-                            }
-                        });
-                    } else {
-                        setEvents([...events, newEvent]);
-                    }
-                    
+                        emoji: cat ? cat.emoji : '📅'
+                    }]);
                     setShowAddModal(false);
                     setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
                 } else if (addType === 'todo' && newItem.title) {
@@ -546,19 +536,11 @@
             const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
             const deleteEvent = (id) => {
                 if (confirm('Supprimer cet événement ?')) {
-                    const eventToDelete = events.find(e => e.id === id);
                     const newEvents = events.filter(e => e.id !== id);
                     setEvents(newEvents);
-                    
                     setTimeout(async () => {
-                        // Supprimer de Calendar
-                        if (eventToDelete?.calendarEventId) {
-                            await gsheets.deleteCalendarEvent(eventToDelete.calendarEventId);
-                        }
-                        
-                        // Supprimer du Sheet
                         const eventsForSheet = newEvents.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
+                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
                     }, 500);
                 }
             };
