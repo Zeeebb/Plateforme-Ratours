@@ -12,13 +12,15 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body>
     <div id="root"></div>
     
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
         
         const GOOGLE_CLIENT_ID = '988519105715-eqfihmrhgotpkund2ub9nvb3ov7nfde4.apps.googleusercontent.com';
         const SPREADSHEET_ID = '186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw';
@@ -32,6 +34,18 @@
             };
             return <span style={{ fontSize: size }}>{icons[name] || "•"}</span>;
         };
+
+        // ===== HEADERS CONSTANTS =====
+        const EVENTS_HEADERS = ['id', 'title', 'date', 'endDate', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId'];
+        const TODOS_HEADERS = ['id', 'title', 'category', 'priority', 'done', 'assignedTo'];
+        const COURSES_HEADERS = ['id', 'item', 'category', 'checked'];
+        const MENUS_HEADERS = ['id', 'day', 'meal', 'emoji'];
+        const NOTES_HEADERS = ['id', 'text', 'author', 'date'];
+        const GUARD_HEADERS = ['id', 'date', 'morning', 'afternoon', 'notes'];
+        const FAMILY_HEADERS = ['section', 'id', 'label', 'value', 'type'];
+
+        const EMOJI_PICKER = ['🏠','🏥','🏫','🎉','🎭','🎵','🎨','🏋️','🚗','✈️','🏖️','⛪','💼','💰','📦','📱','🔧','🧹','🍼','👶','👨‍👩‍👧','👵','🐶','🐱','🥖','🥗','🥩','🍕','🍰','🧁','☕','🍷','💊','🩺','📞','📝','🎁','🛍️','👗','👟','🧸','📚','🎓','⚽','🎮','🌸','🌍','❤️'];
+        const DAY_ORDER = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
         class GoogleServicesManager {
             constructor() {
@@ -135,7 +149,6 @@
             }
 
             // === GOOGLE CALENDAR ===
-            
             async createTestCalendar() {
                 try {
                     const url = 'https://www.googleapis.com/calendar/v3/calendars';
@@ -151,55 +164,24 @@
                             timeZone: 'Europe/Paris'
                         })
                     });
-                    
-                    if (!response.ok) {
-                        console.error('Erreur création calendrier:', response.status);
-                        return null;
-                    }
-                    
+                    if (!response.ok) return null;
                     const calendar = await response.json();
                     this.calendarId = calendar.id;
                     localStorage.setItem('ratours_calendar_id', calendar.id);
-                    console.log('✅ Calendrier TEST créé:', calendar.id);
                     return calendar.id;
                 } catch (error) {
                     console.error('Erreur création calendrier:', error);
                     return null;
                 }
             }
-            
-            async listCalendarEvents() {
-                if (!this.calendarId) return [];
-                
-                try {
-                    const url = `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events?maxResults=100&singleEvents=true&orderBy=startTime`;
-                    const response = await fetch(url, {
-                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
-                    });
-                    
-                    if (!response.ok) {
-                        console.error('Erreur lecture Calendar:', response.status);
-                        return [];
-                    }
-                    
-                    const data = await response.json();
-                    return data.items || [];
-                } catch (error) {
-                    console.error('Erreur lecture Calendar:', error);
-                    return [];
-                }
-            }
-            
+
             async createCalendarEvent(event) {
                 if (!this.calendarId) return null;
-                
                 try {
                     const url = `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events`;
                     let eventBody;
-                    
                     if (event.endDate) {
-                        // Period event: all-day, multi-day
-                        // Google Calendar end date is exclusive, so add 1 day
+                        // Période : all-day event
                         const endDateObj = new Date(event.endDate + 'T12:00:00');
                         endDateObj.setDate(endDateObj.getDate() + 1);
                         const exclusiveEnd = endDateObj.toISOString().split('T')[0];
@@ -210,64 +192,45 @@
                             end: { date: exclusiveEnd }
                         };
                     } else {
-                        // Single event with time
                         eventBody = {
                             summary: event.title,
                             description: `[Ratours] ${event.category}`,
-                            start: {
-                                dateTime: `${event.date}T${event.time || '09:00'}:00`,
-                                timeZone: 'Europe/Paris'
-                            },
-                            end: {
-                                dateTime: `${event.date}T${event.time ? this.addHour(event.time) : '10:00'}:00`,
-                                timeZone: 'Europe/Paris'
-                            }
+                            start: { dateTime: `${event.date}T${event.time || '09:00'}:00`, timeZone: 'Europe/Paris' },
+                            end: { dateTime: `${event.date}T${event.time ? this.addHour(event.time) : '10:00'}:00`, timeZone: 'Europe/Paris' }
                         };
                     }
-                    
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`,
-                            'Content-Type': 'application/json',
-                        },
+                        headers: { 'Authorization': `Bearer ${this.accessToken}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify(eventBody)
                     });
-                    
-                    if (!response.ok) {
-                        console.error('Erreur création event:', response.status);
-                        return null;
-                    }
-                    
-                    const createdEvent = await response.json();
-                    return createdEvent.id;
+                    if (!response.ok) return null;
+                    const created = await response.json();
+                    return created.id;
                 } catch (error) {
                     console.error('Erreur création event:', error);
                     return null;
                 }
             }
-            
+
             async deleteCalendarEvent(calendarEventId) {
                 if (!this.calendarId) return false;
-                
                 try {
                     const url = `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events/${calendarEventId}`;
-                    const response = await fetch(url, {
-                        method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
-                    });
-                    
+                    const response = await fetch(url, { method: 'DELETE', headers: { 'Authorization': `Bearer ${this.accessToken}` } });
                     return response.ok;
                 } catch (error) {
                     console.error('Erreur suppression event:', error);
                     return false;
                 }
             }
-            
+
             addHour(time) {
                 const [h, m] = time.split(':');
-                const newHour = (parseInt(h) + 1).toString().padStart(2, '0');
-                return `${newHour}:${m}`;
+                const hour = parseInt(h);
+                // FIX: handle 23h → clamp to 23:59
+                if (hour >= 23) return '23:59';
+                return `${(hour + 1).toString().padStart(2, '0')}:${m}`;
             }
 
             arrayToObjects(array) {
@@ -289,6 +252,14 @@
 
         const gsheets = new GoogleServicesManager();
 
+        // ===== HELPER =====
+        const formatDateFr = (dateStr) => {
+            if (!dateStr) return '';
+            const d = new Date(dateStr + 'T12:00:00');
+            return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+        };
+
+        // ===== APP =====
         const App = () => {
             const [isGoogleReady, setIsGoogleReady] = useState(false);
             const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -300,22 +271,25 @@
             const [addType, setAddType] = useState('');
             const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
             const [editingInfo, setEditingInfo] = useState(null);
+            const [infoLabel, setInfoLabel] = useState('');
+            const [infoValue, setInfoValue] = useState('');
             const [calendarEnabled, setCalendarEnabled] = useState(!!localStorage.getItem('ratours_calendar_id'));
             const [calendarStatus, setCalendarStatus] = useState('');
-            const [addCategoryModal, setAddCategoryModal] = useState(null); // { section: 'courses'|'todos'|'events' }
+            const [addCategoryModal, setAddCategoryModal] = useState(null);
             const [newCatName, setNewCatName] = useState('');
             const [newCatEmoji, setNewCatEmoji] = useState('');
+            const [hideDoneTodos, setHideDoneTodos] = useState(false);
+            const [assignPickerTodo, setAssignPickerTodo] = useState(null);
+            const [noteText, setNoteText] = useState('');
 
             const [users] = useState([
                 { id: 1, name: 'Maman', color: 'bg-pink-400', emoji: '👩' },
                 { id: 2, name: 'Papa', color: 'bg-blue-400', emoji: '👨' },
             ]);
-
             const [externalPeople, setExternalPeople] = useState([
                 { id: 4, name: 'Mamie', emoji: '👵' },
                 { id: 5, name: 'Nounou', emoji: '🧑‍🍼' },
             ]);
-
             const [categories, setCategories] = useState({
                 courses: [
                     { id: 'alimentaire', name: 'Alimentaire', emoji: '🥖' },
@@ -336,30 +310,24 @@
             });
 
             const [events, setEvents] = useState([
-                { id: 1, title: 'RDV pédiatre', date: '2026-01-24', category: 'medical', assignedTo: [1], emoji: '🏥' },
+                { id: 1, title: 'RDV pédiatre', date: '2026-01-24', endDate: '', time: '', category: 'medical', assignedTo: [1], emoji: '🏥', calendarEventId: null },
             ]);
-
             const [todos, setTodos] = useState([
                 { id: 1, title: 'Prendre RDV dentiste', category: 'rdv', priority: 'high', done: false, assignedTo: 1 },
                 { id: 2, title: 'Acheter chaussures', category: 'enfant', priority: 'medium', done: false, assignedTo: 2 },
             ]);
-
             const [courses, setCourses] = useState([
                 { id: 1, item: 'Lait bio', category: 'alimentaire', checked: false },
                 { id: 2, item: 'Couches', category: 'enfant', checked: false },
             ]);
-
             const [menus, setMenus] = useState([
                 { id: 1, day: 'Lundi', meal: 'Pâtes bolognaise', emoji: '🍝' },
                 { id: 2, day: 'Mardi', meal: 'Poulet rôti', emoji: '🍗' },
             ]);
-            
             const [notes, setNotes] = useState([]);
-
             const [guardSchedule, setGuardSchedule] = useState([
                 { id: 1, date: '2026-01-20', morning: 1, afternoon: 2, notes: '' },
             ]);
-
             const [familyInfo, setFamilyInfo] = useState({
                 urgences: [{ id: 1, label: 'Pédiatre', value: '01 23 45 67 89', type: 'phone' }],
                 utiles: [{ id: 1, label: 'Crèche', value: '01 23 45 67 90', type: 'phone' }],
@@ -370,35 +338,30 @@
             const [newItem, setNewItem] = useState({
                 title: '', date: '', endDate: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '', isPeriod: false
             });
+            const resetNewItem = () => setNewItem({ title: '', date: '', endDate: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '', isPeriod: false });
 
             const allPeople = [...users, ...externalPeople];
 
+            // ===== GOOGLE INIT =====
             useEffect(() => {
                 const initGoogle = async () => {
                     await gsheets.initialize();
                     setIsGoogleReady(true);
                     setIsAuthenticated(gsheets.isAuthenticated());
                 };
-                if (window.google) {
-                    initGoogle();
-                } else {
+                if (window.google) { initGoogle(); }
+                else {
                     const checkGoogle = setInterval(() => {
-                        if (window.google) {
-                            clearInterval(checkGoogle);
-                            initGoogle();
-                        }
+                        if (window.google) { clearInterval(checkGoogle); initGoogle(); }
                     }, 100);
                 }
             }, []);
 
-            // Charger les données du Google Sheet quand currentUser est défini
             useEffect(() => {
-                if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) {
-                    console.log('👤 Utilisateur connecté, chargement des données...');
-                    syncFromCloud();
-                }
+                if (isAuthenticated && currentUser && gsheets.hasSpreadsheet()) syncFromCloud();
             }, [currentUser]);
 
+            // ===== SYNC FROM CLOUD =====
             const syncFromCloud = async () => {
                 if (!isAuthenticated) return;
                 setIsSyncing(true);
@@ -406,7 +369,7 @@
                     const todosData = await gsheets.readSheet('todos');
                     if (todosData.length > 1) {
                         setTodos(gsheets.arrayToObjects(todosData).map(t => ({
-                            ...t, id: parseInt(t.id), assignedTo: parseInt(t.assignedTo), done: t.done === 'true'
+                            ...t, id: parseInt(t.id), assignedTo: t.assignedTo ? parseInt(t.assignedTo) : null, done: t.done === 'true'
                         })));
                     }
                     const coursesData = await gsheets.readSheet('courses');
@@ -417,14 +380,12 @@
                     }
                     const menusData = await gsheets.readSheet('menus');
                     if (menusData.length > 1) {
-                        setMenus(gsheets.arrayToObjects(menusData).map(m => ({
-                            ...m, id: parseInt(m.id)
-                        })));
+                        setMenus(gsheets.arrayToObjects(menusData).map(m => ({ ...m, id: parseInt(m.id) })));
                     }
                     const eventsData = await gsheets.readSheet('events');
                     if (eventsData.length > 1) {
                         setEvents(gsheets.arrayToObjects(eventsData).map(e => ({
-                            ...e, 
+                            ...e,
                             id: parseInt(e.id) || Date.now(),
                             assignedTo: e.assignedTo ? JSON.parse(e.assignedTo) : [],
                             calendarEventId: e.calendarEventId || null,
@@ -446,74 +407,46 @@
                         const reconstructed = { urgences: [], utiles: [], links: [], notes: [] };
                         familyObjects.forEach(item => {
                             if (reconstructed[item.section]) {
-                                reconstructed[item.section].push({
-                                    id: parseInt(item.id), label: item.label, value: item.value, type: item.type
-                                });
+                                reconstructed[item.section].push({ id: parseInt(item.id), label: item.label, value: item.value, type: item.type });
                             }
                         });
                         setFamilyInfo(reconstructed);
                     }
-                    
                     const notesData = await gsheets.readSheet('notes');
                     if (notesData.length > 1) {
                         setNotes(gsheets.arrayToObjects(notesData).map(n => ({
-                            ...n,
-                            id: parseInt(n.id) || Date.now(),
-                            author: parseInt(n.author) || currentUser,
-                            date: n.date || new Date().toISOString().split('T')[0]
+                            ...n, id: parseInt(n.id) || Date.now(), author: parseInt(n.author) || currentUser, date: n.date || new Date().toISOString().split('T')[0]
                         })));
                     }
                     setLastSync(new Date());
-                    console.log('✅ Chargement terminé');
-                } catch (error) {
-                    console.error('Erreur chargement:', error);
-                }
+                } catch (error) { console.error('Erreur chargement:', error); }
                 setIsSyncing(false);
             };
 
+            // ===== SYNC TO CLOUD (FIX: notes + endDate + calendarEventId) =====
             const syncToCloud = async () => {
                 if (!isAuthenticated) return;
-                console.log('💾 Sauvegarde...');
                 setIsSyncing(true);
                 try {
-                    await gsheets.writeSheet('todos', gsheets.objectsToArray(todos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
-                    await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
-                    await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
+                    await gsheets.writeSheet('todos', gsheets.objectsToArray(todos, TODOS_HEADERS));
+                    await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, COURSES_HEADERS));
+                    await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, MENUS_HEADERS));
                     const eventsForSheet = events.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'endDate', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
-                    await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, ['id', 'date', 'morning', 'afternoon', 'notes']));
+                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, EVENTS_HEADERS));
+                    await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, GUARD_HEADERS));
                     const flatFamilyInfo = [];
                     Object.entries(familyInfo).forEach(([section, items]) => {
-                        items.forEach(item => {
-                            flatFamilyInfo.push({ section, id: item.id, label: item.label, value: item.value, type: item.type });
-                        });
+                        items.forEach(item => { flatFamilyInfo.push({ section, id: item.id, label: item.label, value: item.value, type: item.type }); });
                     });
-                    await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
-                    await gsheets.writeSheet('notes', gsheets.objectsToArray(notes, ['id', 'text', 'author', 'date']));
+                    await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, FAMILY_HEADERS));
+                    await gsheets.writeSheet('notes', gsheets.objectsToArray(notes, NOTES_HEADERS));
                     setLastSync(new Date());
-                    console.log('✅ Sauvegarde OK');
-                } catch (error) {
-                    console.error('Erreur sauvegarde:', error);
-                }
+                } catch (error) { console.error('Erreur sauvegarde:', error); }
                 setIsSyncing(false);
             };
 
-
-            const handleGoogleLogout = () => {
-                if (confirm('Se déconnecter de Google ?')) {
-                    gsheets.logout();
-                    setIsAuthenticated(false);
-                    setCurrentUser(null);
-                }
-            };
-
-            const handleGoogleLogin = async () => {
-                const success = await gsheets.requestAuth();
-                if (success) {
-                    setIsAuthenticated(true);
-                    await syncFromCloud();
-                }
-            };
+            const handleGoogleLogout = () => { if (confirm('Se déconnecter de Google ?')) { gsheets.logout(); setIsAuthenticated(false); setCurrentUser(null); } };
+            const handleGoogleLogin = async () => { const success = await gsheets.requestAuth(); if (success) { setIsAuthenticated(true); await syncFromCloud(); } };
 
             useEffect(() => {
                 if (isAuthenticated && currentUser) {
@@ -522,67 +455,68 @@
                 }
             }, [todos, courses, menus, events, guardSchedule, familyInfo, notes, isAuthenticated, currentUser]);
 
-            const resetNewItem = () => setNewItem({ title: '', date: '', endDate: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '', isPeriod: false });
-
+            // ===== HANDLERS =====
             const handleAdd = () => {
                 if (addType === 'event' && newItem.title && newItem.date) {
                     const cat = categories.events.find(c => c.id === newItem.category);
                     const newEvent = {
-                        id: Date.now(), 
-                        title: newItem.title, 
-                        date: newItem.date,
+                        id: Date.now(), title: newItem.title, date: newItem.date,
                         endDate: newItem.isPeriod && newItem.endDate ? newItem.endDate : '',
                         time: newItem.isPeriod ? '' : (newItem.time || ''),
-                        category: newItem.category || 'general', 
+                        category: newItem.category || 'general',
                         assignedTo: [newItem.assignedTo || currentUser],
-                        emoji: cat ? cat.emoji : '📅',
-                        calendarEventId: null
+                        emoji: cat ? cat.emoji : '📅', calendarEventId: null
                     };
                     setEvents([...events, newEvent]);
-                    setShowAddModal(false);
-                    resetNewItem();
+                    setShowAddModal(false); resetNewItem(); setAddType('');
                     if (calendarEnabled && gsheets.calendarId) {
-                        gsheets.createCalendarEvent(newEvent).then(calEventId => {
-                            if (calEventId) {
-                                setEvents(prev => prev.map(e => e.id === newEvent.id ? { ...e, calendarEventId: calEventId } : e));
-                            }
+                        gsheets.createCalendarEvent(newEvent).then(calId => {
+                            if (calId) setEvents(prev => prev.map(e => e.id === newEvent.id ? { ...e, calendarEventId: calId } : e));
                         });
                     }
                 } else if (addType === 'todo' && newItem.title) {
                     setTodos([...todos, {
                         id: Date.now(), title: newItem.title, category: newItem.category || 'general',
-                        priority: newItem.priority, done: false, 
+                        priority: newItem.priority, done: false,
                         assignedTo: newItem.assignedTo !== undefined && newItem.assignedTo !== null ? newItem.assignedTo : null
                     }]);
-                    setShowAddModal(false);
-                    resetNewItem();
+                    setShowAddModal(false); resetNewItem(); setAddType('');
                 } else if (addType === 'course' && newItem.title) {
-                    setCourses([...courses, {
-                        id: Date.now(), item: newItem.title, category: newItem.category || 'alimentaire', checked: false
-                    }]);
+                    setCourses([...courses, { id: Date.now(), item: newItem.title, category: newItem.category || 'alimentaire', checked: false }]);
                     setNewItem({ ...newItem, title: '' });
                 } else if (addType === 'menu' && newItem.title && newItem.day) {
                     setMenus([...menus, { id: Date.now(), day: newItem.day, meal: newItem.title, emoji: '🍽️' }]);
-                    setShowAddModal(false);
-                    resetNewItem();
+                    setShowAddModal(false); resetNewItem(); setAddType('');
                 }
             };
 
+            // FIX: replace prompt() with modal for unassigned todo toggle
             const toggleTodo = (id) => {
                 const todo = todos.find(t => t.id === id);
                 if (!todo) return;
-                
-                // Si la tâche est cochée (done) et n'était pas assignée, demander qui l'a faite
                 if (!todo.done && !todo.assignedTo) {
-                    const who = prompt(`Qui a fait cette tâche ?\n1 - ${users[0].name}\n2 - ${users[1].name}`);
-                    if (who === '1' || who === '2') {
-                        setTodos(todos.map(t => t.id === id ? { ...t, done: true, assignedTo: parseInt(who) } : t));
-                    }
+                    setAssignPickerTodo(id);
                 } else {
                     setTodos(todos.map(t => t.id === id ? { ...t, done: !t.done } : t));
                 }
             };
+            const confirmAssignTodo = (todoId, userId) => {
+                setTodos(todos.map(t => t.id === todoId ? { ...t, done: true, assignedTo: userId } : t));
+                setAssignPickerTodo(null);
+            };
+
             const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
+
+            // NEW: clear all checked courses
+            const clearCheckedCourses = () => {
+                if (confirm('Supprimer les articles cochés ?')) {
+                    const newCourses = courses.filter(c => !c.checked);
+                    setCourses(newCourses);
+                    setTimeout(async () => { await gsheets.writeSheet('courses', gsheets.objectsToArray(newCourses, COURSES_HEADERS)); }, 500);
+                }
+            };
+
+            // FIX: deleteEvent with correct headers + calendar cleanup
             const deleteEvent = (id) => {
                 if (confirm('Supprimer cet événement ?')) {
                     const eventToDelete = events.find(e => e.id === id);
@@ -590,106 +524,71 @@
                     setEvents(newEvents);
                     setTimeout(async () => {
                         const eventsForSheet = newEvents.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'endDate', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
+                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, EVENTS_HEADERS));
                     }, 500);
                     if (calendarEnabled && eventToDelete?.calendarEventId) {
                         gsheets.deleteCalendarEvent(eventToDelete.calendarEventId);
                     }
                 }
             };
-            
             const deleteTodo = (id) => {
                 if (confirm('Supprimer cette tâche ?')) {
                     const newTodos = todos.filter(t => t.id !== id);
                     setTodos(newTodos);
-                    setTimeout(async () => {
-                        await gsheets.writeSheet('todos', gsheets.objectsToArray(newTodos, ['id', 'title', 'category', 'priority', 'done', 'assignedTo']));
-                    }, 500);
+                    setTimeout(async () => { await gsheets.writeSheet('todos', gsheets.objectsToArray(newTodos, TODOS_HEADERS)); }, 500);
                 }
             };
-            
             const deleteCourse = (id) => {
                 if (confirm('Supprimer cet article ?')) {
                     const newCourses = courses.filter(c => c.id !== id);
                     setCourses(newCourses);
-                    setTimeout(async () => {
-                        await gsheets.writeSheet('courses', gsheets.objectsToArray(newCourses, ['id', 'item', 'category', 'checked']));
-                    }, 500);
+                    setTimeout(async () => { await gsheets.writeSheet('courses', gsheets.objectsToArray(newCourses, COURSES_HEADERS)); }, 500);
                 }
             };
-            
             const deleteMenu = (id) => {
                 if (confirm('Supprimer ce menu ?')) {
                     const newMenus = menus.filter(m => m.id !== id);
                     setMenus(newMenus);
-                    setTimeout(async () => {
-                        await gsheets.writeSheet('menus', gsheets.objectsToArray(newMenus, ['id', 'day', 'meal', 'emoji']));
-                    }, 500);
+                    setTimeout(async () => { await gsheets.writeSheet('menus', gsheets.objectsToArray(newMenus, MENUS_HEADERS)); }, 500);
                 }
             };
-            
-            
-            const addNote = (text) => {
-                if (text && text.trim().length > 0 && text.length <= 300) {
-                    setNotes([{
-                        id: Date.now(),
-                        text: text.trim(),
-                        author: currentUser,
-                        date: new Date().toISOString().split('T')[0]
-                    }, ...notes]);
+
+            // FIX: notes with controlled state + send button
+            const addNote = () => {
+                if (noteText && noteText.trim().length > 0 && noteText.length <= 300) {
+                    setNotes([{ id: Date.now(), text: noteText.trim(), author: currentUser, date: new Date().toISOString().split('T')[0] }, ...notes]);
+                    setNoteText('');
                 }
             };
-            
             const deleteNote = (id) => {
                 if (confirm('Supprimer cette note ?')) {
                     const newNotes = notes.filter(n => n.id !== id);
                     setNotes(newNotes);
-                    setTimeout(async () => {
-                        await gsheets.writeSheet('notes', gsheets.objectsToArray(newNotes, ['id', 'text', 'author', 'date']));
-                    }, 500);
+                    setTimeout(async () => { await gsheets.writeSheet('notes', gsheets.objectsToArray(newNotes, NOTES_HEADERS)); }, 500);
                 }
             };
 
-            const addFamilyInfo = (section, item) => {
-                setFamilyInfo({ ...familyInfo, [section]: [...familyInfo[section], { ...item, id: Date.now() }] });
-            };
+            // FIX: familyInfo with React state
+            const addFamilyInfo = (section, item) => { setFamilyInfo({ ...familyInfo, [section]: [...familyInfo[section], { ...item, id: Date.now() }] }); };
+            const deleteFamilyInfo = (section, id) => { setFamilyInfo({ ...familyInfo, [section]: familyInfo[section].filter(item => item.id !== id) }); };
 
-            const deleteFamilyInfo = (section, id) => {
-                setFamilyInfo({ ...familyInfo, [section]: familyInfo[section].filter(item => item.id !== id) });
-            };
-
-            // === GOOGLE CALENDAR ===
+            // ===== CALENDAR =====
             const enableCalendar = async () => {
                 setCalendarStatus('Création du calendrier...');
                 try {
                     const existingId = localStorage.getItem('ratours_calendar_id');
-                    if (existingId) {
-                        gsheets.calendarId = existingId;
-                        setCalendarEnabled(true);
-                        setCalendarStatus('✅ Calendrier connecté');
-                        return;
-                    }
+                    if (existingId) { gsheets.calendarId = existingId; setCalendarEnabled(true); setCalendarStatus('✅ Connecté'); return; }
                     const calId = await gsheets.createTestCalendar();
-                    if (calId) {
-                        setCalendarEnabled(true);
-                        setCalendarStatus('✅ Calendrier "Ratours TEST" créé !');
-                    } else {
-                        setCalendarStatus('❌ Erreur lors de la création');
-                    }
-                } catch (error) {
-                    setCalendarStatus('❌ Erreur : ' + error.message);
-                }
+                    if (calId) { setCalendarEnabled(true); setCalendarStatus('✅ Calendrier créé !'); }
+                    else { setCalendarStatus('❌ Erreur création'); }
+                } catch (e) { setCalendarStatus('❌ ' + e.message); }
             };
-
             const disableCalendar = () => {
-                if (confirm('Désactiver la sync Google Calendar ?\n(Le calendrier ne sera pas supprimé)')) {
-                    localStorage.removeItem('ratours_calendar_id');
-                    gsheets.calendarId = null;
-                    setCalendarEnabled(false);
-                    setCalendarStatus('');
+                if (confirm('Désactiver la sync Google Calendar ?')) {
+                    localStorage.removeItem('ratours_calendar_id'); gsheets.calendarId = null;
+                    setCalendarEnabled(false); setCalendarStatus('');
                 }
             };
-
             const syncEventsToCalendar = async () => {
                 if (!calendarEnabled || !gsheets.calendarId) return;
                 setCalendarStatus('Sync en cours...');
@@ -697,76 +596,54 @@
                 for (const event of events) {
                     if (!event.calendarEventId) {
                         const calEventId = await gsheets.createCalendarEvent(event);
-                        if (calEventId) {
-                            event.calendarEventId = calEventId;
-                            synced++;
-                        }
+                        if (calEventId) { event.calendarEventId = calEventId; synced++; }
                     }
                 }
-                if (synced > 0) {
-                    setEvents([...events]);
-                    setCalendarStatus(`✅ ${synced} événement(s) synchronisé(s)`);
-                } else {
-                    setCalendarStatus('✅ Tout est à jour');
-                }
+                if (synced > 0) { setEvents([...events]); setCalendarStatus(`✅ ${synced} synchronisé(s)`); }
+                else { setCalendarStatus('✅ Tout est à jour'); }
             };
 
-            // === CATEGORY MANAGEMENT ===
+            // ===== CATEGORY =====
             const handleAddCategory = () => {
                 if (!newCatName.trim() || !newCatEmoji || !addCategoryModal) return;
                 const id = newCatName.trim().toLowerCase().replace(/\s+/g, '-');
                 const section = addCategoryModal.section;
-                setCategories({
-                    ...categories,
-                    [section]: [...categories[section], { id, name: newCatName.trim(), emoji: newCatEmoji }]
-                });
-                setAddCategoryModal(null);
-                setNewCatName('');
-                setNewCatEmoji('');
+                setCategories({ ...categories, [section]: [...categories[section], { id, name: newCatName.trim(), emoji: newCatEmoji }] });
+                setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji('');
             };
 
+            // ===== COMPUTED =====
             const calculateTaskStats = () => {
-                const parent1Tasks = todos.filter(t => t.assignedTo === 1);
-                const parent2Tasks = todos.filter(t => t.assignedTo === 2);
-                const parent1Done = parent1Tasks.filter(t => t.done).length;
-                const parent2Done = parent2Tasks.filter(t => t.done).length;
-                const totalTasks = parent1Tasks.length + parent2Tasks.length;
-                const parent1Share = totalTasks > 0 ? Math.round((parent1Tasks.length / totalTasks) * 100) : 50;
-                const parent2Share = 100 - parent1Share;
+                const p1 = todos.filter(t => t.assignedTo === 1);
+                const p2 = todos.filter(t => t.assignedTo === 2);
+                const p1d = p1.filter(t => t.done).length;
+                const p2d = p2.filter(t => t.done).length;
+                const total = p1.length + p2.length;
+                const p1s = total > 0 ? Math.round((p1.length / total) * 100) : 50;
                 return {
-                    parent1: { total: parent1Tasks.length, done: parent1Done, todo: parent1Tasks.length - parent1Done, share: parent1Share },
-                    parent2: { total: parent2Tasks.length, done: parent2Done, todo: parent2Tasks.length - parent2Done, share: parent2Share },
-                    totalTasks, totalDone: parent1Done + parent2Done, isBalanced: Math.abs(parent1Share - 50) <= 10
+                    parent1: { total: p1.length, done: p1d, todo: p1.length - p1d, share: p1s },
+                    parent2: { total: p2.length, done: p2d, todo: p2.length - p2d, share: 100 - p1s },
+                    totalTasks: total, totalDone: p1d + p2d, isBalanced: Math.abs(p1s - 50) <= 10
                 };
             };
 
             const generateGuardWeek = () => {
-                // Utiliser la date d'aujourd'hui comme base
                 const today = new Date();
-                const dayOfWeek = today.getDay(); // 0 = dimanche, 1 = lundi, etc.
-                
-                // Calculer le début de la semaine (lundi)
+                const dow = today.getDay();
                 const weekStart = new Date(today);
-                const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Si dimanche, reculer de 6 jours
-                weekStart.setDate(today.getDate() + daysToMonday + (currentWeekOffset * 7));
-                
+                weekStart.setDate(today.getDate() + (dow === 0 ? -6 : 1 - dow) + (currentWeekOffset * 7));
                 const week = [];
-                const dayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+                const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
                 for (let i = 0; i < 7; i++) {
-                    const date = new Date(weekStart);
-                    date.setDate(date.getDate() + i);
-                    const dateStr = date.toISOString().split('T')[0];
-                    const existing = guardSchedule.find(g => g.date === dateStr);
-                    
-                    // Marquer la date d'aujourd'hui
-                    const isToday = dateStr === new Date().toISOString().split('T')[0];
-                    
+                    const d = new Date(weekStart); d.setDate(d.getDate() + i);
+                    const ds = d.toISOString().split('T')[0];
+                    const existing = guardSchedule.find(g => g.date === ds);
                     week.push({
-                        date: dateStr, dayName: dayNames[date.getDay()],
-                        displayDate: `${date.getDate()}/${date.getMonth() + 1}`,
+                        date: ds, dayName: dayNames[d.getDay()],
+                        displayDate: `${d.getDate()}/${d.getMonth() + 1}`,
                         morning: existing?.morning || null, afternoon: existing?.afternoon || null,
                         notes: existing?.notes || '', id: existing?.id || null,
-                        isToday
+                        isToday: ds === new Date().toISOString().split('T')[0]
                     });
                 }
                 return week;
@@ -774,19 +651,23 @@
 
             const updateGuardSlot = (date, period, personId) => {
                 const existing = guardSchedule.find(g => g.date === date);
-                if (existing) {
-                    setGuardSchedule(guardSchedule.map(g => g.date === date ? { ...g, [period]: personId } : g));
-                } else {
-                    setGuardSchedule([...guardSchedule, {
-                        id: Date.now(), date, morning: period === 'morning' ? personId : null,
-                        afternoon: period === 'afternoon' ? personId : null, notes: ''
-                    }]);
-                }
+                if (existing) setGuardSchedule(guardSchedule.map(g => g.date === date ? { ...g, [period]: personId } : g));
+                else setGuardSchedule([...guardSchedule, { id: Date.now(), date, morning: period === 'morning' ? personId : null, afternoon: period === 'afternoon' ? personId : null, notes: '' }]);
+            };
+            // NEW: editable guard notes
+            const updateGuardNotes = (date, text) => {
+                const existing = guardSchedule.find(g => g.date === date);
+                if (existing) setGuardSchedule(guardSchedule.map(g => g.date === date ? { ...g, notes: text } : g));
+                else setGuardSchedule([...guardSchedule, { id: Date.now(), date, morning: null, afternoon: null, notes: text }]);
             };
 
             const stats = calculateTaskStats();
             const guardWeek = generateGuardWeek();
+            const todayStr = new Date().toISOString().split('T')[0];
+            const upcomingEvents = events.filter(e => e.date >= todayStr || (e.endDate && e.endDate >= todayStr)).sort((a, b) => a.date.localeCompare(b.date));
+            const sortedEvents = [...events].sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
 
+            // ===== LOGIN SCREEN =====
             if (!currentUser) {
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex items-center justify-center p-6">
@@ -808,7 +689,7 @@
                             {isAuthenticated && (
                                 <div className="mb-6 p-4 bg-green-50 rounded-2xl border-2 border-green-200">
                                     <p className="text-sm text-green-800 mb-2">✅ Connecté</p>
-                                    <a href="https://docs.google.com/spreadsheets/d/186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw" target="_blank" className="text-xs text-blue-600">Ouvrir le Sheet →</a>
+                                    <a href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`} target="_blank" className="text-xs text-blue-600">Ouvrir le Sheet →</a>
                                 </div>
                             )}
                             <div className="space-y-4">
@@ -827,67 +708,86 @@
             const currentUserData = users.find(u => u.id === currentUser);
             const myTodos = todos.filter(t => !t.done && t.assignedTo === currentUser);
 
+            // ===== MAIN RENDER =====
             return (
-                <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 pb-32">
-                    <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-5 shadow-xl">
-                        <div className="flex justify-between max-w-4xl mx-auto">
+                <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 pb-28">
+                    {/* HEADER */}
+                    <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 shadow-xl">
+                        <div className="flex justify-between items-center max-w-4xl mx-auto">
                             <div>
-                                <h1 className="text-2xl font-bold">Plateforme Ratours</h1>
-                                <p className="text-purple-100 text-sm">{currentUserData.emoji} {currentUserData.name}</p>
+                                <h1 className="text-xl font-bold">Plateforme Ratours</h1>
+                                <p className="text-purple-100 text-xs">{currentUserData.emoji} {currentUserData.name}</p>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-1.5">
                                 {isAuthenticated && (
-                                    <button onClick={syncFromCloud} disabled={isSyncing} className="bg-white bg-opacity-20 px-4 py-2 rounded-xl flex items-center gap-2">
-                                        <Icon name="sync" size={18} />
-                                        {lastSync && <span className="text-xs">{lastSync.toLocaleTimeString()}</span>}
+                                    <button onClick={syncFromCloud} disabled={isSyncing} className="bg-white bg-opacity-20 px-3 py-1.5 rounded-lg flex items-center gap-1 text-xs">
+                                        <Icon name="sync" size={14} />
+                                        {lastSync && <span>{lastSync.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>}
                                     </button>
                                 )}
-                                <button onClick={handleGoogleLogout} className="bg-white bg-opacity-20 px-3 py-2 rounded-xl text-xs" title="Déconnexion Google">
-                                        Déco
-                                    </button>
-                                    <button onClick={() => setCurrentUser(null)} className="bg-white bg-opacity-20 px-4 py-2 rounded-xl">
-                                        <Icon name="logout" size={18} />
-                                    </button>
+                                <button onClick={handleGoogleLogout} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg text-xs">Déco</button>
+                                <button onClick={() => setCurrentUser(null)} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg">
+                                    <Icon name="logout" size={14} />
+                                </button>
                             </div>
                         </div>
                     </div>
 
                     <div className="p-4 max-w-4xl mx-auto">
+                        {/* ===== DASHBOARD ===== */}
                         {activeTab === 'dashboard' && (
-                            <div className="space-y-6">
-                                <div className="bg-gradient-to-r from-purple-400 to-pink-400 rounded-3xl p-6 text-white shadow-lg">
-                                    <h2 className="text-3xl font-bold mb-2">Bonjour {currentUserData.name} ! 👋</h2>
-                                    <p className="text-purple-100">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                            <div className="space-y-4">
+                                <div className="bg-gradient-to-r from-purple-400 to-pink-400 rounded-2xl p-5 text-white shadow-lg">
+                                    <h2 className="text-2xl font-bold mb-1">Bonjour {currentUserData.name} ! 👋</h2>
+                                    <p className="text-purple-100 text-sm capitalize">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
                                 </div>
                                 
-                                {/* Tâches urgentes */}
                                 {todos.filter(t => !t.done && t.priority === 'high').length > 0 && (
-                                    <div className="bg-red-50 border-2 border-red-300 rounded-2xl shadow-lg p-6">
-                                        <h3 className="font-bold text-red-700 mb-4 flex items-center gap-2">
-                                            <span className="text-2xl">🔴</span>
-                                            <span>URGENT ({todos.filter(t => !t.done && t.priority === 'high').length})</span>
-                                        </h3>
+                                    <div className="bg-red-50 border-2 border-red-300 rounded-2xl shadow p-4">
+                                        <h3 className="font-bold text-red-700 mb-3 flex items-center gap-2 text-sm">🔴 URGENT ({todos.filter(t => !t.done && t.priority === 'high').length})</h3>
                                         {todos.filter(t => !t.done && t.priority === 'high').slice(0, 5).map(todo => (
-                                            <div key={todo.id} className="flex items-center gap-3 py-2 bg-white rounded-xl px-3 mb-2">
-                                                <input type="checkbox" className="h-5 w-5" onChange={() => toggleTodo(todo.id)} />
-                                                <span className="flex-1 font-semibold">{todo.title}</span>
-                                                <span className="text-xs text-gray-500">{users.find(u => u.id === todo.assignedTo)?.emoji || '❓'}</span>
+                                            <div key={todo.id} className="flex items-center gap-3 py-1.5 bg-white rounded-xl px-3 mb-1.5">
+                                                <input type="checkbox" className="h-5 w-5 accent-red-500" onChange={() => toggleTodo(todo.id)} />
+                                                <span className="flex-1 font-medium text-sm">{todo.title}</span>
+                                                <span className="text-xs">{users.find(u => u.id === todo.assignedTo)?.emoji || '❓'}</span>
                                             </div>
                                         ))}
                                     </div>
                                 )}
+
+                                {upcomingEvents.length > 0 && (
+                                    <div className="bg-white rounded-2xl shadow p-4">
+                                        <h3 className="font-bold text-gray-800 mb-3 text-sm">📅 Prochains événements</h3>
+                                        {upcomingEvents.slice(0, 4).map(event => (
+                                            <div key={event.id} className="flex items-center gap-3 py-2 border-b last:border-0">
+                                                <span className="text-xl">{event.emoji}</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <span className="font-medium text-sm block truncate">{event.title}</span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {formatDateFr(event.date)}
+                                                        {event.endDate && ` → ${formatDateFr(event.endDate)}`}
+                                                        {event.time && ` à ${event.time}`}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {upcomingEvents.length > 4 && <button onClick={() => setActiveTab('calendar')} className="text-xs text-purple-600 mt-2">Voir tout →</button>}
+                                    </div>
+                                )}
                                 
-                                <div className="bg-white rounded-2xl shadow-lg p-6">
-                                    <h3 className="font-bold text-gray-800 mb-4">✅ Mes tâches ({myTodos.length})</h3>
+                                <div className="bg-white rounded-2xl shadow p-4">
+                                    <h3 className="font-bold text-gray-800 mb-3 text-sm">✅ Mes tâches ({myTodos.length})</h3>
                                     {myTodos.slice(0, 5).map(todo => (
-                                        <div key={todo.id} className="flex items-center gap-3 py-2">
+                                        <div key={todo.id} className="flex items-center gap-3 py-1.5">
                                             <input type="checkbox" className="h-5 w-5" onChange={() => toggleTodo(todo.id)} />
-                                            <span>{todo.title}</span>
+                                            <span className="text-sm">{todo.title}</span>
                                         </div>
                                     ))}
+                                    {myTodos.length === 0 && <p className="text-sm text-gray-400">Rien pour l'instant 🎉</p>}
                                 </div>
-                                <div className="bg-white rounded-2xl shadow-lg p-6">
-                                    <h3 className="font-bold text-gray-800 mb-4">🛒 Courses ({courses.filter(c => !c.checked).length})</h3>
+
+                                <div className="bg-white rounded-2xl shadow p-4">
+                                    <h3 className="font-bold text-gray-800 mb-3 text-sm">🛒 Courses ({courses.filter(c => !c.checked).length})</h3>
                                     {courses.filter(c => !c.checked).slice(0, 6).map(course => (
                                         <div key={course.id} className="flex items-center gap-3 py-1">
                                             <input type="checkbox" className="h-4 w-4" onChange={() => toggleCourse(course.id)} />
@@ -897,123 +797,114 @@
                                 </div>
                                 
                                 {notes.length > 0 && (
-                                    <div className="bg-white rounded-2xl shadow-lg p-6">
-                                        <h3 className="font-bold text-gray-800 mb-4">📝 Dernières notes ({notes.length})</h3>
+                                    <div className="bg-white rounded-2xl shadow p-4">
+                                        <h3 className="font-bold text-gray-800 mb-3 text-sm">📝 Dernières notes</h3>
                                         {notes.slice(0, 3).map(note => (
-                                            <div key={note.id} className="py-3 border-b last:border-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-lg">{users.find(u => u.id === note.author)?.emoji || '👤'}</span>
-                                                    <span className="text-sm font-semibold">{users.find(u => u.id === note.author)?.name}</span>
-                                                    <span className="text-xs text-gray-500">{new Date(note.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</span>
+                                            <div key={note.id} className="py-2 border-b last:border-0">
+                                                <div className="flex items-center gap-2 mb-0.5">
+                                                    <span className="text-sm">{users.find(u => u.id === note.author)?.emoji || '👤'}</span>
+                                                    <span className="text-xs font-semibold">{users.find(u => u.id === note.author)?.name}</span>
+                                                    <span className="text-xs text-gray-400">{formatDateFr(note.date)}</span>
                                                 </div>
-                                                <p className="text-sm text-gray-700 line-clamp-2">{note.text}</p>
+                                                <p className="text-sm text-gray-600 line-clamp-2">{note.text}</p>
                                             </div>
                                         ))}
-                                        {notes.length > 3 && (
-                                            <button onClick={() => setActiveTab('notes')} className="text-sm text-purple-600 mt-2 hover:underline">
-                                                Voir toutes les notes →
-                                            </button>
-                                        )}
+                                        {notes.length > 3 && <button onClick={() => setActiveTab('notes')} className="text-xs text-purple-600 mt-2">Voir toutes →</button>}
                                     </div>
                                 )}
                             </div>
                         )}
 
+                        {/* ===== AGENDA (sorted, formatted, periods, assignees) ===== */}
                         {activeTab === 'calendar' && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-2xl font-bold">📅 Agenda</h2>
-                                    {calendarEnabled && (
-                                        <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full">📅 Calendar actif</span>
-                                    )}
+                                    {calendarEnabled && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">📅 Cal.</span>}
                                 </div>
-                                {events.sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || '')).map(event => {
+                                {sortedEvents.map(event => {
                                     const isPeriod = !!event.endDate;
-                                    const dayCount = isPeriod ? Math.ceil((new Date(event.endDate) - new Date(event.date)) / 86400000) + 1 : 0;
+                                    const dayCount = isPeriod ? Math.ceil((new Date(event.endDate + 'T12:00:00') - new Date(event.date + 'T12:00:00')) / 86400000) + 1 : 0;
                                     return (
-                                        <div key={event.id} className={`bg-white rounded-2xl shadow-lg p-4 flex items-start gap-3 ${isPeriod ? 'border-l-4 border-purple-400' : ''}`}>
-                                            <span className="text-3xl mt-1">{event.emoji}</span>
+                                        <div key={event.id} className={`bg-white rounded-2xl shadow p-4 flex items-start gap-3 ${isPeriod ? 'border-l-4 border-purple-400' : ''}`}>
+                                            <span className="text-2xl mt-0.5">{event.emoji}</span>
                                             <div className="flex-1 min-w-0">
-                                                <h3 className="font-bold text-gray-800">{event.title}</h3>
-                                                <p className="text-sm text-gray-600">
+                                                <h3 className="font-bold text-gray-800 text-sm">{event.title}</h3>
+                                                <p className="text-xs text-gray-500 mt-0.5">
                                                     {isPeriod ? (
-                                                        <>
-                                                            {new Date(event.date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                                                            {' → '}
-                                                            {new Date(event.endDate + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                                                            <span className="ml-2 bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">{dayCount}j</span>
-                                                        </>
+                                                        <span>{formatDateFr(event.date)} → {formatDateFr(event.endDate)} <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full ml-1 text-xs">{dayCount}j</span></span>
                                                     ) : (
-                                                        <>
-                                                            {new Date(event.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
-                                                            {event.time && ` à ${event.time}`}
-                                                        </>
+                                                        <span>{formatDateFr(event.date)}{event.time && ` à ${event.time}`}</span>
                                                     )}
                                                 </p>
-                                                {event.assignedTo && event.assignedTo.length > 0 && (
-                                                    <div className="flex gap-1 mt-1">
-                                                        {event.assignedTo.map(uid => {
-                                                            const u = users.find(u => u.id === uid);
-                                                            return u ? <span key={uid} className="text-sm">{u.emoji}</span> : null;
-                                                        })}
-                                                    </div>
+                                                {event.assignedTo?.length > 0 && (
+                                                    <div className="flex gap-1 mt-1">{event.assignedTo.map(uid => {
+                                                        const u = allPeople.find(p => p.id === uid);
+                                                        return u ? <span key={uid} className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">{u.emoji} {u.name}</span> : null;
+                                                    })}</div>
                                                 )}
                                             </div>
                                             <div className="flex flex-col items-center gap-1">
-                                                {event.calendarEventId && <span className="text-xs text-blue-400" title="Sync Calendar">📅</span>}
-                                                <button onClick={() => deleteEvent(event.id)} className="text-red-400"><Icon name="x" size={18} /></button>
+                                                {event.calendarEventId && <span className="text-xs">📅</span>}
+                                                <button onClick={() => deleteEvent(event.id)} className="text-red-400"><Icon name="x" size={16} /></button>
                                             </div>
                                         </div>
                                     );
                                 })}
-                                {events.length === 0 && (
-                                    <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-500">
-                                        Aucun événement. Ajoutez-en un avec le bouton + !
-                                    </div>
-                                )}
+                                {events.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucun événement — ajoutez-en via le bouton +</div>}
                             </div>
                         )}
 
+                        {/* ===== TÂCHES (toggle done, show priority + assignee) ===== */}
                         {activeTab === 'todos' && (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">✅ Tâches</h2>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-2xl font-bold">✅ Tâches</h2>
+                                    <button onClick={() => setHideDoneTodos(!hideDoneTodos)} className={`text-xs px-3 py-1.5 rounded-full ${hideDoneTodos ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+                                        {hideDoneTodos ? '👁️ Voir terminées' : '🙈 Masquer faites'}
+                                    </button>
+                                </div>
                                 
-                                {/* Tâches non assignées */}
-                                {todos.filter(t => !t.assignedTo).length > 0 && (
-                                    <div className="bg-white rounded-2xl shadow-lg p-5 border-2 border-yellow-300">
-                                        <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                                            <span className="text-2xl">❓</span>
-                                            <span>Non assignées</span>
-                                        </h3>
-                                        {todos.filter(t => !t.assignedTo).map(todo => (
-                                            <div key={todo.id} className="flex items-center justify-between py-3 border-b last:border-0">
-                                                <div className="flex items-center gap-3 flex-1">
-                                                    <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
-                                                    <span className={todo.done ? 'line-through text-gray-400' : ''}>{todo.title}</span>
-                                                </div>
-                                                <button onClick={() => deleteTodo(todo.id)} className="text-red-400"><Icon name="x" size={16} /></button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                
-                                {/* Tâches par catégorie */}
-                                {categories.todos.map(cat => {
-                                    const catTodos = todos.filter(t => t.category === cat.id && t.assignedTo);
-                                    if (catTodos.length === 0) return null;
-                                    return (
-                                        <div key={cat.id} className="bg-white rounded-2xl shadow-lg p-5">
-                                            <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                                                <span className="text-2xl">{cat.emoji}</span>
-                                                <span>{cat.name}</span>
-                                            </h3>
-                                            {catTodos.map(todo => (
-                                                <div key={todo.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                                {(() => {
+                                    const unassigned = todos.filter(t => !t.assignedTo && (!hideDoneTodos || !t.done));
+                                    return unassigned.length > 0 ? (
+                                        <div className="bg-white rounded-2xl shadow p-4 border-2 border-yellow-300">
+                                            <h3 className="font-bold text-gray-700 mb-2 text-sm">❓ Non assignées ({unassigned.length})</h3>
+                                            {unassigned.map(todo => (
+                                                <div key={todo.id} className="flex items-center justify-between py-2 border-b last:border-0">
                                                     <div className="flex items-center gap-3 flex-1">
                                                         <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
-                                                        <span className={todo.done ? 'line-through text-gray-400' : ''}>{todo.title}</span>
+                                                        <span className={`text-sm ${todo.done ? 'line-through text-gray-400' : ''}`}>{todo.title}</span>
                                                     </div>
-                                                    <button onClick={() => deleteTodo(todo.id)} className="text-red-400"><Icon name="x" size={16} /></button>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {todo.priority === 'high' && <span className="text-xs">🔴</span>}
+                                                        {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
+                                                        <button onClick={() => deleteTodo(todo.id)} className="text-red-400"><Icon name="x" size={14} /></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : null;
+                                })()}
+                                
+                                {categories.todos.map(cat => {
+                                    const catTodos = todos.filter(t => t.category === cat.id && t.assignedTo && (!hideDoneTodos || !t.done));
+                                    if (catTodos.length === 0) return null;
+                                    return (
+                                        <div key={cat.id} className="bg-white rounded-2xl shadow p-4">
+                                            <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm">{cat.emoji} {cat.name}</h3>
+                                            {catTodos.map(todo => (
+                                                <div key={todo.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                                    <div className="flex items-center gap-3 flex-1">
+                                                        <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
+                                                        <span className={`text-sm ${todo.done ? 'line-through text-gray-400' : ''}`}>{todo.title}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {todo.priority === 'high' && <span className="text-xs">🔴</span>}
+                                                        {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
+                                                        <span className="text-xs">{users.find(u => u.id === todo.assignedTo)?.emoji}</span>
+                                                        <button onClick={() => deleteTodo(todo.id)} className="text-red-400 ml-1"><Icon name="x" size={14} /></button>
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -1022,25 +913,33 @@
                             </div>
                         )}
 
+                        {/* ===== COURSES (with clear checked) ===== */}
                         {activeTab === 'courses' && (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">🛒 Courses</h2>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-2xl font-bold">🛒 Courses</h2>
+                                    {courses.some(c => c.checked) && (
+                                        <button onClick={clearCheckedCourses} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-full border border-red-200">
+                                            🗑️ Vider cochés ({courses.filter(c => c.checked).length})
+                                        </button>
+                                    )}
+                                </div>
                                 {categories.courses.map(cat => {
                                     const catCourses = courses.filter(c => c.category === cat.id);
                                     if (catCourses.length === 0) return null;
+                                    const unchecked = catCourses.filter(c => !c.checked).length;
                                     return (
-                                        <div key={cat.id} className="bg-white rounded-2xl shadow-lg p-5">
-                                            <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                                                <span className="text-2xl">{cat.emoji}</span>
-                                                <span>{cat.name}</span>
+                                        <div key={cat.id} className="bg-white rounded-2xl shadow p-4">
+                                            <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm">
+                                                {cat.emoji} {cat.name} <span className="text-xs text-gray-400 font-normal">({unchecked})</span>
                                             </h3>
                                             {catCourses.map(course => (
-                                                <div key={course.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                                <div key={course.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
                                                     <div className="flex items-center gap-3 flex-1">
                                                         <input type="checkbox" checked={course.checked} onChange={() => toggleCourse(course.id)} className="h-5 w-5" />
-                                                        <span className={course.checked ? 'line-through text-gray-400' : ''}>{course.item}</span>
+                                                        <span className={`text-sm ${course.checked ? 'line-through text-gray-400' : ''}`}>{course.item}</span>
                                                     </div>
-                                                    <button onClick={() => deleteCourse(course.id)} className="text-red-400"><Icon name="x" size={16} /></button>
+                                                    <button onClick={() => deleteCourse(course.id)} className="text-red-400"><Icon name="x" size={14} /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -1049,156 +948,179 @@
                             </div>
                         )}
 
+                        {/* ===== MENUS (grouped by day) ===== */}
                         {activeTab === 'menus' && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <h2 className="text-2xl font-bold">🍽️ Menus</h2>
-                                {menus.map(m => (
-                                    <div key={m.id} className="bg-white rounded-2xl shadow-lg p-5 flex gap-4">
-                                        <span className="text-5xl">{m.emoji}</span>
-                                        <div className="flex-1">
-                                            <h3 className="font-bold text-lg">{m.day}</h3>
-                                            <p className="text-gray-600">{m.meal}</p>
+                                {DAY_ORDER.map(day => {
+                                    const dayMenus = menus.filter(m => m.day === day);
+                                    if (dayMenus.length === 0) return null;
+                                    return (
+                                        <div key={day} className="bg-white rounded-2xl shadow p-4">
+                                            <h3 className="font-bold text-gray-700 mb-2 text-sm">{day}</h3>
+                                            {dayMenus.map(m => (
+                                                <div key={m.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xl">{m.emoji}</span>
+                                                        <span className="text-sm">{m.meal}</span>
+                                                    </div>
+                                                    <button onClick={() => deleteMenu(m.id)} className="text-red-400"><Icon name="x" size={14} /></button>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <button onClick={() => deleteMenu(m.id)} className="text-red-400"><Icon name="trash" size={20} /></button>
-                                    </div>
-                                ))}
+                                    );
+                                })}
+                                {menus.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucun menu planifié</div>}
                             </div>
                         )}
 
+                        {/* ===== STATS ===== */}
                         {activeTab === 'stats' && (
-                            <div className="space-y-6">
+                            <div className="space-y-4">
                                 <h2 className="text-2xl font-bold">📊 Statistiques</h2>
-                                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-6 border-2 border-purple-200">
-                                    <h3 className="text-xl font-bold mb-4">⚖️ Équilibre parental</h3>
+                                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-5 border-2 border-purple-200">
+                                    <h3 className="text-lg font-bold mb-3">⚖️ Équilibre parental</h3>
                                     {stats.isBalanced && stats.totalTasks > 0 && (
-                                        <div className="bg-green-100 border border-green-300 rounded-xl p-3 mb-4">
-                                            <p className="text-green-800 font-medium">🎉 Parfait ! La charge est bien répartie !</p>
+                                        <div className="bg-green-100 border border-green-300 rounded-xl p-2 mb-3">
+                                            <p className="text-green-800 font-medium text-sm">🎉 Charge bien répartie !</p>
                                         </div>
                                     )}
                                     <div className="flex justify-between mb-2 text-sm">
                                         <span className="font-semibold text-pink-600">{users[0].emoji} {users[0].name}: {stats.parent1.share}%</span>
                                         <span className="font-semibold text-blue-600">{users[1].emoji} {users[1].name}: {stats.parent2.share}%</span>
                                     </div>
-                                    <div className="w-full h-12 bg-gray-200 rounded-full overflow-hidden flex">
-                                        <div className="h-full flex transition-all" style={{ width: `${stats.parent1.share}%` }}>
-                                            <div className="bg-pink-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.done / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.done > 0 && `✓${stats.parent1.done}`}</div>
-                                            <div className="bg-pink-200 flex items-center justify-center text-pink-700 text-sm" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.todo / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.todo > 0 && stats.parent1.todo}</div>
+                                    <div className="w-full h-10 bg-gray-200 rounded-full overflow-hidden flex">
+                                        <div className="h-full flex" style={{ width: `${stats.parent1.share}%` }}>
+                                            <div className="bg-pink-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.done / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.done > 0 && `✓${stats.parent1.done}`}</div>
+                                            <div className="bg-pink-200 flex items-center justify-center text-pink-700 text-xs" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.todo / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.todo > 0 && stats.parent1.todo}</div>
                                         </div>
-                                        <div className="h-full flex transition-all" style={{ width: `${stats.parent2.share}%` }}>
-                                            <div className="bg-blue-200 flex items-center justify-center text-blue-700 text-sm" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.todo / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.todo > 0 && stats.parent2.todo}</div>
-                                            <div className="bg-blue-500 flex items-center justify-center text-white text-sm font-bold" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.done / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.done > 0 && `✓${stats.parent2.done}`}</div>
+                                        <div className="h-full flex" style={{ width: `${stats.parent2.share}%` }}>
+                                            <div className="bg-blue-200 flex items-center justify-center text-blue-700 text-xs" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.todo / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.todo > 0 && stats.parent2.todo}</div>
+                                            <div className="bg-blue-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.done / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.done > 0 && `✓${stats.parent2.done}`}</div>
                                         </div>
                                     </div>
-                                    <div className="text-center mt-4 bg-white rounded-xl p-3">
-                                        <p className="font-medium">{stats.totalDone} / {stats.totalTasks} tâches accomplies</p>
-                                    </div>
+                                    <p className="text-center mt-3 bg-white rounded-xl p-2 text-sm font-medium">{stats.totalDone} / {stats.totalTasks} tâches accomplies</p>
                                 </div>
                             </div>
                         )}
 
+                        {/* ===== GARDE (with editable notes) ===== */}
                         {activeTab === 'guard' && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-2xl font-bold">👶 Garde</h2>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)} className="bg-purple-100 px-3 py-2 rounded-xl text-sm">← Préc.</button>
-                                        <button onClick={() => setCurrentWeekOffset(0)} className="bg-purple-500 text-white px-3 py-2 rounded-xl text-sm">Aujourd'hui</button>
-                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)} className="bg-purple-100 px-3 py-2 rounded-xl text-sm">Suiv. →</button>
+                                    <div className="flex gap-1.5">
+                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)} className="bg-purple-100 px-2.5 py-1.5 rounded-lg text-xs font-medium">←</button>
+                                        <button onClick={() => setCurrentWeekOffset(0)} className="bg-purple-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium">Auj.</button>
+                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)} className="bg-purple-100 px-2.5 py-1.5 rounded-lg text-xs font-medium">→</button>
                                     </div>
                                 </div>
                                 {guardWeek.map(day => (
-                                    <div key={day.date} className={`bg-white rounded-2xl shadow-lg p-5 ${day.isToday ? 'border-2 border-purple-500' : ''}`}>
-                                        <h3 className="font-bold text-lg mb-2">
+                                    <div key={day.date} className={`bg-white rounded-2xl shadow p-4 ${day.isToday ? 'ring-2 ring-purple-500' : ''}`}>
+                                        <h3 className="font-bold text-sm mb-2">
                                             {day.dayName} {day.displayDate}
-                                            {day.isToday && <span className="ml-2 text-xs bg-purple-500 text-white px-2 py-1 rounded-full">Aujourd'hui</span>}
+                                            {day.isToday && <span className="ml-2 text-xs bg-purple-500 text-white px-2 py-0.5 rounded-full">Auj.</span>}
                                         </h3>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-blue-50 rounded-xl p-3">
-                                                <p className="text-xs text-blue-600 mb-2">☀️ Matin</p>
-                                                <select value={day.morning || ''} onChange={(e) => updateGuardSlot(day.date, 'morning', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-sm">
-                                                    <option value="">Non assigné</option>
+                                        <div className="grid grid-cols-2 gap-2 mb-2">
+                                            <div className="bg-amber-50 rounded-xl p-2.5">
+                                                <p className="text-xs text-amber-700 mb-1 font-medium">☀️ Matin</p>
+                                                <select value={day.morning || ''} onChange={(e) => updateGuardSlot(day.date, 'morning', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-xs">
+                                                    <option value="">—</option>
                                                     {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
                                                 </select>
                                             </div>
-                                            <div className="bg-orange-50 rounded-xl p-3">
-                                                <p className="text-xs text-orange-600 mb-2">🌙 Après-midi</p>
-                                                <select value={day.afternoon || ''} onChange={(e) => updateGuardSlot(day.date, 'afternoon', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-sm">
-                                                    <option value="">Non assigné</option>
+                                            <div className="bg-indigo-50 rounded-xl p-2.5">
+                                                <p className="text-xs text-indigo-700 mb-1 font-medium">🌙 Après-midi</p>
+                                                <select value={day.afternoon || ''} onChange={(e) => updateGuardSlot(day.date, 'afternoon', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-xs">
+                                                    <option value="">—</option>
                                                     {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
                                                 </select>
                                             </div>
                                         </div>
+                                        <input type="text" placeholder="Notes du jour..." value={day.notes} onChange={(e) => updateGuardNotes(day.date, e.target.value)} className="w-full text-xs bg-gray-50 border rounded-lg px-2.5 py-1.5 placeholder-gray-400" />
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        {activeTab === 'family' && (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">👨‍👩‍👧 Infos Famille</h2>
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🚨</span> Urgences</h3>
-                                        <button onClick={() => setEditingInfo({ section: 'urgences', type: 'phone' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                        {/* ===== NOTES (controlled + send button) ===== */}
+                        {activeTab === 'notes' && (
+                            <div className="space-y-3">
+                                <h2 className="text-2xl font-bold">📝 Notes</h2>
+                                <div className="bg-white rounded-2xl shadow p-4">
+                                    <textarea
+                                        placeholder="Écrivez une note (max 300 car.)..."
+                                        maxLength="300" rows="2"
+                                        className="w-full px-3 py-2 border-2 rounded-xl resize-none text-sm"
+                                        value={noteText}
+                                        onChange={(e) => setNoteText(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote(); } }}
+                                    />
+                                    <div className="flex justify-between items-center mt-2">
+                                        <span className="text-xs text-gray-400">{noteText.length}/300</span>
+                                        <button onClick={addNote} disabled={!noteText.trim()} className={`px-4 py-1.5 rounded-lg text-xs font-medium ${noteText.trim() ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                                            Envoyer
+                                        </button>
                                     </div>
-                                    {familyInfo.urgences.map(item => (
-                                        <div key={item.id} className="py-2 border-b last:border-0 flex justify-between">
-                                            <span className="text-gray-700">{item.label}</span>
-                                            <div className="flex gap-3 items-center">
-                                                <span className="font-semibold">{item.value}</span>
-                                                <button onClick={() => deleteFamilyInfo('urgences', item.id)} className="text-red-400"><Icon name="trash" size={16} /></button>
-                                            </div>
-                                        </div>
-                                    ))}
                                 </div>
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">📞</span> Numéros utiles</h3>
-                                        <button onClick={() => setEditingInfo({ section: 'utiles', type: 'phone' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
-                                    </div>
-                                    {familyInfo.utiles.map(item => (
-                                        <div key={item.id} className="py-2 border-b last:border-0 flex justify-between">
-                                            <span className="text-gray-700">{item.label}</span>
-                                            <div className="flex gap-3 items-center">
-                                                <span className="font-semibold">{item.value}</span>
-                                                <button onClick={() => deleteFamilyInfo('utiles', item.id)} className="text-red-400"><Icon name="trash" size={16} /></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🔗</span> Liens</h3>
-                                        <button onClick={() => setEditingInfo({ section: 'links', type: 'link' })} className="text-purple-600"><Icon name="plus" size={20} /></button>
-                                    </div>
-                                    {familyInfo.links.map(item => (
-                                        <div key={item.id} className="py-2 border-b last:border-0">
-                                            <div className="flex justify-between items-center">
-                                                <div className="flex-1">
-                                                    <p className="text-gray-700">{item.label}</p>
-                                                    <a href={item.value} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">{item.value}</a>
+                                <div className="space-y-2">
+                                    {notes.map(note => (
+                                        <div key={note.id} className="bg-white rounded-2xl shadow p-4">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-lg">{users.find(u => u.id === note.author)?.emoji || '👤'}</span>
+                                                    <span className="text-sm font-semibold">{users.find(u => u.id === note.author)?.name || 'Inconnu'}</span>
+                                                    <span className="text-xs text-gray-400">{formatDateFr(note.date)}</span>
                                                 </div>
-                                                <button onClick={() => deleteFamilyInfo('links', item.id)} className="text-red-400 ml-3"><Icon name="trash" size={16} /></button>
+                                                <button onClick={() => deleteNote(note.id)} className="text-red-400"><Icon name="x" size={14} /></button>
                                             </div>
+                                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.text}</p>
                                         </div>
                                     ))}
+                                    {notes.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucune note</div>}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* ===== FAMILY (React state for modal) ===== */}
+                        {activeTab === 'family' && (
+                            <div className="space-y-3">
+                                <h2 className="text-2xl font-bold">👨‍👩‍👧 Infos Famille</h2>
+                                {[
+                                    { key: 'urgences', title: '🚨 Urgences', type: 'phone' },
+                                    { key: 'utiles', title: '📞 Numéros utiles', type: 'phone' },
+                                    { key: 'links', title: '🔗 Liens', type: 'link' },
+                                    { key: 'notes', title: '📝 Notes', type: 'text' },
+                                ].map(section => (
+                                    <div key={section.key} className="bg-white rounded-2xl shadow p-4">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h3 className="font-bold text-sm">{section.title}</h3>
+                                            <button onClick={() => { setEditingInfo({ section: section.key, type: section.type }); setInfoLabel(''); setInfoValue(''); }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
+                                        </div>
+                                        {familyInfo[section.key].map(item => (
+                                            <div key={item.id} className="py-2 border-b last:border-0 flex justify-between items-center">
+                                                <div className="flex-1 min-w-0">
+                                                    <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                                                    {section.type === 'link' ? (
+                                                        <a href={item.value} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline block truncate">{item.value}</a>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-500 block">{item.value}</span>
+                                                    )}
+                                                </div>
+                                                <button onClick={() => deleteFamilyInfo(section.key, item.id)} className="text-red-400 ml-2"><Icon name="trash" size={14} /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
                                 {editingInfo && (
-                                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                                        <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6">
-                                            <h3 className="text-xl font-bold mb-4">Ajouter</h3>
-                                            <input type="text" placeholder="Label" id="info-label" className="w-full px-4 py-3 border-2 rounded-xl mb-3" />
-                                            <input type={editingInfo.type === 'link' ? 'url' : 'text'} placeholder={editingInfo.type === 'phone' ? 'Téléphone' : 'URL'} id="info-value" className="w-full px-4 py-3 border-2 rounded-xl mb-4" />
+                                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setEditingInfo(null); }}>
+                                        <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-md w-full p-5">
+                                            <h3 className="text-lg font-bold mb-3">Ajouter une info</h3>
+                                            <input type="text" placeholder="Label" value={infoLabel} onChange={(e) => setInfoLabel(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
+                                            <input type={editingInfo.type === 'link' ? 'url' : 'text'} placeholder={editingInfo.type === 'phone' ? 'Téléphone' : editingInfo.type === 'link' ? 'URL' : 'Texte'} value={infoValue} onChange={(e) => setInfoValue(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-4 text-sm" />
                                             <div className="flex gap-3">
-                                                <button onClick={() => setEditingInfo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl">Annuler</button>
-                                                <button onClick={() => {
-                                                    const label = document.getElementById('info-label').value;
-                                                    const value = document.getElementById('info-value').value;
-                                                    if (label && value) {
-                                                        addFamilyInfo(editingInfo.section, { label, value, type: editingInfo.type });
-                                                        setEditingInfo(null);
-                                                    }
-                                                }} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl">Ajouter</button>
+                                                <button onClick={() => setEditingInfo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
+                                                <button onClick={() => { if (infoLabel && infoValue) { addFamilyInfo(editingInfo.section, { label: infoLabel, value: infoValue, type: editingInfo.type }); setEditingInfo(null); } }} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl text-sm font-medium">Ajouter</button>
                                             </div>
                                         </div>
                                     </div>
@@ -1206,255 +1128,164 @@
                             </div>
                         )}
 
-                        {activeTab === 'notes' && (
-                            <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">📝 Notes</h2>
-                                
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <textarea 
-                                        placeholder="Écrivez une note (max 300 caractères)..."
-                                        maxLength="300"
-                                        className="w-full px-4 py-3 border-2 rounded-xl resize-none"
-                                        rows="3"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                addNote(e.target.value);
-                                                e.target.value = '';
-                                            }
-                                        }}
-                                    />
-                                    <p className="text-xs text-gray-500 mt-2">Appuyez sur Entrée pour ajouter (Shift+Entrée pour nouvelle ligne)</p>
-                                </div>
-                                
-                                <div className="space-y-3">
-                                    {notes.map(note => (
-                                        <div key={note.id} className="bg-white rounded-2xl shadow-lg p-5">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-2xl">{users.find(u => u.id === note.author)?.emoji || '👤'}</span>
-                                                    <span className="font-semibold">{users.find(u => u.id === note.author)?.name || 'Inconnu'}</span>
-                                                    <span className="text-xs text-gray-500">{new Date(note.date).toLocaleDateString('fr-FR')}</span>
-                                                </div>
-                                                <button onClick={() => deleteNote(note.id)} className="text-red-400">
-                                                    <Icon name="x" size={16} />
-                                                </button>
-                                            </div>
-                                            <p className="text-gray-700 whitespace-pre-wrap">{note.text}</p>
-                                        </div>
-                                    ))}
-                                    {notes.length === 0 && (
-                                        <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-500">
-                                            Aucune note. Écrivez-en une ci-dessus !
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
+                        {/* ===== SETTINGS ===== */}
                         {activeTab === 'settings' && (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <h2 className="text-2xl font-bold">⚙️ Réglages</h2>
                                 
                                 {/* Google Calendar */}
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <h3 className="font-bold flex items-center gap-2 mb-3"><span className="text-2xl">📅</span> Google Calendar</h3>
-                                    <p className="text-sm text-gray-500 mb-4">
-                                        Synchronise les événements avec un calendrier "Ratours TEST" dédié.
-                                    </p>
+                                <div className="bg-white rounded-2xl shadow p-4">
+                                    <h3 className="font-bold text-sm flex items-center gap-2 mb-3">📅 Google Calendar</h3>
+                                    <p className="text-xs text-gray-500 mb-3">Synchronise les événements avec un calendrier dédié "Ratours TEST"</p>
                                     {!calendarEnabled ? (
-                                        <button onClick={enableCalendar} className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-xl font-semibold">
-                                            📅 Activer Google Calendar
-                                        </button>
+                                        <button onClick={enableCalendar} className="w-full bg-blue-500 text-white py-2.5 rounded-xl text-sm font-medium">📅 Activer Google Calendar</button>
                                     ) : (
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl p-3">
-                                                <span>✅</span>
-                                                <span className="text-green-800 text-sm font-medium">Calendar activé</span>
-                                            </div>
-                                            <button onClick={syncEventsToCalendar} className="w-full bg-blue-50 border border-blue-200 text-blue-700 py-2.5 rounded-xl text-sm font-medium">
-                                                🔄 Synchroniser les événements existants
-                                            </button>
-                                            <button onClick={disableCalendar} className="w-full bg-gray-100 text-gray-500 py-2 rounded-xl text-xs">
-                                                Désactiver
-                                            </button>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2 bg-green-50 rounded-xl p-2.5"><span>✅</span><span className="text-green-800 text-xs font-medium">Calendar activé</span></div>
+                                            <button onClick={syncEventsToCalendar} className="w-full bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-medium">🔄 Synchroniser les événements existants</button>
+                                            <button onClick={disableCalendar} className="w-full bg-gray-100 text-gray-500 py-1.5 rounded-xl text-xs">Désactiver</button>
                                         </div>
                                     )}
-                                    {calendarStatus && <p className="text-sm text-gray-600 mt-3 text-center">{calendarStatus}</p>}
+                                    {calendarStatus && <p className="text-xs text-gray-600 mt-2 text-center">{calendarStatus}</p>}
                                 </div>
 
                                 {/* Personnes externes */}
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">👥</span> Personnes externes</h3>
+                                <div className="bg-white rounded-2xl shadow p-4">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="font-bold text-sm">👥 Personnes externes</h3>
                                         <button onClick={() => {
-                                            const name = prompt('Nom de la personne :');
-                                            const emoji = prompt('Emoji (ex: 👴) :');
+                                            const name = prompt('Nom :');
+                                            const emoji = prompt('Emoji :');
                                             if (name && emoji) {
                                                 const maxId = Math.max(...externalPeople.map(p => p.id), ...users.map(u => u.id));
                                                 setExternalPeople([...externalPeople, { id: maxId + 1, name, emoji }]);
                                             }
-                                        }} className="text-purple-600"><Icon name="plus" size={20} /></button>
+                                        }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                     </div>
                                     {externalPeople.map(person => (
                                         <div key={person.id} className="py-2 border-b last:border-0 flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-2xl">{person.emoji}</span>
-                                                <span className="font-semibold">{person.name}</span>
-                                            </div>
-                                            <button onClick={() => setExternalPeople(externalPeople.filter(p => p.id !== person.id))} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                            <div className="flex items-center gap-2"><span className="text-lg">{person.emoji}</span><span className="text-sm font-medium">{person.name}</span></div>
+                                            <button onClick={() => setExternalPeople(externalPeople.filter(p => p.id !== person.id))} className="text-red-400"><Icon name="trash" size={14} /></button>
                                         </div>
                                     ))}
                                 </div>
 
-                                {/* Catégories Courses */}
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">🛒</span> Catégories Courses</h3>
-                                        <button onClick={() => setAddCategoryModal({ section: 'courses' })} className="bg-purple-100 text-purple-600 px-3 py-1 rounded-lg text-sm font-medium">+ Ajouter</button>
-                                    </div>
-                                    {categories.courses.map(cat => (
-                                        <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-2xl">{cat.emoji}</span>
-                                                <span>{cat.name}</span>
-                                            </div>
-                                            <button onClick={() => setCategories({ ...categories, courses: categories.courses.filter(c => c.id !== cat.id) })} className="text-red-400"><Icon name="trash" size={16} /></button>
+                                {/* Categories with emoji modal */}
+                                {[
+                                    { section: 'courses', title: '🛒 Catégories Courses' },
+                                    { section: 'todos', title: '✅ Catégories Tâches' },
+                                    { section: 'events', title: '📅 Catégories Événements' },
+                                ].map(({ section, title }) => (
+                                    <div key={section} className="bg-white rounded-2xl shadow p-4">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h3 className="font-bold text-sm">{title}</h3>
+                                            <button onClick={() => { setAddCategoryModal({ section }); setNewCatName(''); setNewCatEmoji(''); }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                         </div>
-                                    ))}
-                                </div>
-
-                                {/* Catégories Tâches */}
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">✅</span> Catégories Tâches</h3>
-                                        <button onClick={() => setAddCategoryModal({ section: 'todos' })} className="bg-purple-100 text-purple-600 px-3 py-1 rounded-lg text-sm font-medium">+ Ajouter</button>
-                                    </div>
-                                    {categories.todos.map(cat => (
-                                        <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-2xl">{cat.emoji}</span>
-                                                <span>{cat.name}</span>
+                                        {categories[section].map(cat => (
+                                            <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
+                                                <div className="flex items-center gap-2"><span className="text-lg">{cat.emoji}</span><span className="text-sm">{cat.name}</span></div>
+                                                <button onClick={() => setCategories({ ...categories, [section]: categories[section].filter(c => c.id !== cat.id) })} className="text-red-400"><Icon name="trash" size={14} /></button>
                                             </div>
-                                            <button onClick={() => setCategories({ ...categories, todos: categories.todos.filter(c => c.id !== cat.id) })} className="text-red-400"><Icon name="trash" size={16} /></button>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Catégories Événements */}
-                                <div className="bg-white rounded-2xl shadow-lg p-5">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold flex items-center gap-2"><span className="text-2xl">📅</span> Catégories Événements</h3>
-                                        <button onClick={() => setAddCategoryModal({ section: 'events' })} className="bg-purple-100 text-purple-600 px-3 py-1 rounded-lg text-sm font-medium">+ Ajouter</button>
+                                        ))}
                                     </div>
-                                    {categories.events.map(cat => (
-                                        <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-2xl">{cat.emoji}</span>
-                                                <span>{cat.name}</span>
-                                            </div>
-                                            <button onClick={() => setCategories({ ...categories, events: categories.events.filter(c => c.id !== cat.id) })} className="text-red-400"><Icon name="trash" size={16} /></button>
-                                        </div>
-                                    ))}
-                                </div>
+                                ))}
                             </div>
                         )}
                     </div>
 
-                    <button onClick={() => setShowAddModal(true)} className="fixed bottom-28 right-5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full p-4 shadow-2xl hover:scale-110 transition-transform z-40">
-                        <Icon name="plus" size={26} />
+                    {/* ===== FAB ===== */}
+                    <button onClick={() => setShowAddModal(true)} className="fixed bottom-24 right-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full p-3.5 shadow-2xl hover:scale-110 transition-transform z-40">
+                        <Icon name="plus" size={24} />
                     </button>
 
-                    {/* Add Item Modal */}
+                    {/* ===== ADD ITEM MODAL (bottom-sheet on mobile) ===== */}
                     {showAddModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
-                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-md w-full p-6 max-h-[85vh] overflow-y-auto">
-                                <div className="flex justify-between items-center mb-5">
-                                    <h3 className="text-xl font-bold">Ajouter</h3>
-                                    <button onClick={() => { setShowAddModal(false); setAddType(''); resetNewItem(); }} className="text-gray-400 p-1">
-                                        <Icon name="x" size={24} />
-                                    </button>
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) { setShowAddModal(false); setAddType(''); resetNewItem(); } }}>
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[85vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-bold">Ajouter</h3>
+                                    <button onClick={() => { setShowAddModal(false); setAddType(''); resetNewItem(); }} className="text-gray-400"><Icon name="x" size={22} /></button>
                                 </div>
                                 {!addType ? (
                                     <div className="space-y-2">
-                                        <button onClick={() => setAddType('event')} className="w-full bg-blue-50 hover:bg-blue-100 p-4 rounded-2xl text-left flex items-center gap-3">
-                                            <span className="text-2xl">📅</span><span className="font-semibold">Événement</span>
-                                        </button>
-                                        <button onClick={() => setAddType('todo')} className="w-full bg-green-50 hover:bg-green-100 p-4 rounded-2xl text-left flex items-center gap-3">
-                                            <span className="text-2xl">✅</span><span className="font-semibold">Tâche</span>
-                                        </button>
-                                        <button onClick={() => setAddType('course')} className="w-full bg-orange-50 hover:bg-orange-100 p-4 rounded-2xl text-left flex items-center gap-3">
-                                            <span className="text-2xl">🛒</span><span className="font-semibold">Course</span>
-                                        </button>
-                                        <button onClick={() => setAddType('menu')} className="w-full bg-purple-50 hover:bg-purple-100 p-4 rounded-2xl text-left flex items-center gap-3">
-                                            <span className="text-2xl">🍽️</span><span className="font-semibold">Menu</span>
-                                        </button>
+                                        {[
+                                            { type: 'event', label: 'Événement', emoji: '📅', bg: 'bg-blue-50 hover:bg-blue-100' },
+                                            { type: 'todo', label: 'Tâche', emoji: '✅', bg: 'bg-green-50 hover:bg-green-100' },
+                                            { type: 'course', label: 'Course', emoji: '🛒', bg: 'bg-orange-50 hover:bg-orange-100' },
+                                            { type: 'menu', label: 'Menu', emoji: '🍽️', bg: 'bg-purple-50 hover:bg-purple-100' },
+                                        ].map(opt => (
+                                            <button key={opt.type} onClick={() => setAddType(opt.type)} className={`w-full ${opt.bg} p-4 rounded-2xl text-left flex items-center gap-3`}>
+                                                <span className="text-2xl">{opt.emoji}</span><span className="font-semibold">{opt.label}</span>
+                                            </button>
+                                        ))}
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        <input type="text" placeholder={addType === 'course' ? 'Article' : addType === 'menu' ? 'Plat' : 'Titre'} value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl" autoFocus />
+                                        <input type="text" placeholder={addType === 'course' ? 'Article' : addType === 'menu' ? 'Plat' : 'Titre'} value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} />
+                                        
                                         {addType === 'menu' && (
-                                            <select value={newItem.day} onChange={(e) => setNewItem({ ...newItem, day: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                            <select value={newItem.day} onChange={(e) => setNewItem({ ...newItem, day: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                 <option value="">Jour</option>
-                                                {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map(d => <option key={d} value={d}>{d}</option>)}
+                                                {DAY_ORDER.map(d => <option key={d} value={d}>{d}</option>)}
                                             </select>
                                         )}
+                                        
                                         {addType === 'event' && (
                                             <>
+                                                {/* Period toggle */}
                                                 <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
-                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: false, endDate: '' })} className={`flex-1 py-2 rounded-lg text-sm font-medium ${!newItem.isPeriod ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>
-                                                        📍 Ponctuel
-                                                    </button>
-                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: true, time: '' })} className={`flex-1 py-2 rounded-lg text-sm font-medium ${newItem.isPeriod ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>
-                                                        📅 Période
-                                                    </button>
+                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: false, endDate: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${!newItem.isPeriod ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>📍 Ponctuel</button>
+                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: true, time: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${newItem.isPeriod ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>📅 Période</button>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <div className="flex-1">
                                                         <label className="text-xs text-gray-500 mb-1 block">{newItem.isPeriod ? 'Début' : 'Date'}</label>
-                                                        <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-3 py-3 border-2 rounded-xl" />
+                                                        <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-3 py-2.5 border-2 rounded-xl text-sm" />
                                                     </div>
                                                     {newItem.isPeriod && (
                                                         <div className="flex-1">
                                                             <label className="text-xs text-gray-500 mb-1 block">Fin</label>
-                                                            <input type="date" value={newItem.endDate} min={newItem.date} onChange={(e) => setNewItem({ ...newItem, endDate: e.target.value })} className="w-full px-3 py-3 border-2 rounded-xl" />
+                                                            <input type="date" value={newItem.endDate} min={newItem.date} onChange={(e) => setNewItem({ ...newItem, endDate: e.target.value })} className="w-full px-3 py-2.5 border-2 rounded-xl text-sm" />
                                                         </div>
                                                     )}
                                                 </div>
                                                 {!newItem.isPeriod && (
-                                                    <input type="time" value={newItem.time} onChange={(e) => setNewItem({ ...newItem, time: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl" />
+                                                    <input type="time" value={newItem.time} onChange={(e) => setNewItem({ ...newItem, time: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm" />
                                                 )}
-                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                     <option value="">Catégorie</option>
                                                     {categories.events.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
                                                 </select>
                                             </>
                                         )}
+                                        
                                         {addType === 'todo' && (
                                             <>
-                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                     <option value="">Catégorie</option>
                                                     {categories.todos.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
                                                 </select>
-                                                <select value={newItem.priority} onChange={(e) => setNewItem({ ...newItem, priority: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                <select value={newItem.priority} onChange={(e) => setNewItem({ ...newItem, priority: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                     <option value="low">⚪ Basse</option>
                                                     <option value="medium">🟡 Moyenne</option>
                                                     <option value="high">🔴 Haute</option>
                                                 </select>
-                                                <select value={newItem.assignedTo || ''} onChange={(e) => setNewItem({ ...newItem, assignedTo: e.target.value ? parseInt(e.target.value) : null })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                                <select value={newItem.assignedTo || ''} onChange={(e) => setNewItem({ ...newItem, assignedTo: e.target.value ? parseInt(e.target.value) : null })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                     <option value="">❓ Non assigné</option>
                                                     {users.map(u => <option key={u.id} value={u.id}>{u.emoji} {u.name}</option>)}
                                                 </select>
                                             </>
                                         )}
+                                        
                                         {addType === 'course' && (
-                                            <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl">
+                                            <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                 {categories.courses.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
                                             </select>
                                         )}
-                                        <div className="flex gap-3 mt-4">
-                                            <button onClick={() => { setAddType(''); resetNewItem(); }} className="flex-1 bg-gray-100 py-3 rounded-xl">Retour</button>
-                                            <button onClick={handleAdd} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl font-medium">Ajouter</button>
+                                        
+                                        <div className="flex gap-3 mt-2">
+                                            <button onClick={() => { setAddType(''); resetNewItem(); }} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Retour</button>
+                                            <button onClick={handleAdd} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl text-sm font-medium">Ajouter</button>
                                         </div>
                                     </div>
                                 )}
@@ -1462,60 +1293,54 @@
                         </div>
                     )}
 
-                    {/* Category Add Modal */}
+                    {/* ===== CATEGORY MODAL (emoji picker) ===== */}
                     {addCategoryModal && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); } }}>
-                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-md w-full p-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-lg font-bold">
-                                        Nouvelle catégorie {addCategoryModal.section === 'courses' ? '🛒' : addCategoryModal.section === 'todos' ? '✅' : '📅'}
-                                    </h3>
-                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="text-gray-400">
-                                        <Icon name="x" size={22} />
-                                    </button>
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-md w-full p-5">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-lg font-bold">Nouvelle catégorie</h3>
+                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="text-gray-400"><Icon name="x" size={20} /></button>
                                 </div>
-                                <input 
-                                    type="text" 
-                                    placeholder="Nom de la catégorie" 
-                                    value={newCatName} 
-                                    onChange={(e) => setNewCatName(e.target.value)} 
-                                    className="w-full px-4 py-3 border-2 rounded-xl mb-4" 
-                                    autoFocus 
-                                />
-                                <p className="text-sm text-gray-500 mb-2">Choisir un emoji :</p>
-                                <div className="grid grid-cols-8 gap-1.5 mb-4 max-h-40 overflow-y-auto p-1">
-                                    {['🏠','🏥','🏫','🎉','🎭','🎵','🎨','🏋️','🚗','✈️','🏖️','⛪','💼','💰','📦','📱','🔧','🧹','🍼','👶','👨‍👩‍👧','👵','🐶','🐱','🥖','🥗','🥩','🍕','🍰','🧁','☕','🍷','💊','🩺','📞','📝','🎁','🛍️','👗','👟','🧸','📚','🎓','⚽','🎮','🌸','🌍','❤️'].map(e => (
-                                        <button 
-                                            key={e} 
-                                            onClick={() => setNewCatEmoji(e)} 
-                                            className={`text-2xl p-1.5 rounded-lg hover:bg-purple-50 transition-colors ${newCatEmoji === e ? 'bg-purple-100 ring-2 ring-purple-400 scale-110' : ''}`}
-                                        >
-                                            {e}
-                                        </button>
+                                <input type="text" placeholder="Nom de la catégorie" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
+                                <p className="text-xs text-gray-500 mb-2">Choisir un emoji :</p>
+                                <div className="grid grid-cols-8 gap-1.5 mb-3 max-h-36 overflow-y-auto p-1">
+                                    {EMOJI_PICKER.map(em => (
+                                        <button key={em} onClick={() => setNewCatEmoji(em)} className={`text-xl p-1.5 rounded-lg hover:bg-purple-50 transition-all ${newCatEmoji === em ? 'bg-purple-100 ring-2 ring-purple-400 scale-110' : ''}`}>{em}</button>
                                     ))}
                                 </div>
                                 {newCatEmoji && newCatName.trim() && (
-                                    <div className="flex items-center gap-2 bg-purple-50 rounded-xl p-3 mb-4">
-                                        <span className="text-2xl">{newCatEmoji}</span>
-                                        <span className="font-medium">{newCatName}</span>
+                                    <div className="flex items-center gap-2 bg-purple-50 rounded-xl p-3 mb-3">
+                                        <span className="text-xl">{newCatEmoji}</span><span className="font-medium text-sm">{newCatName}</span>
                                     </div>
                                 )}
                                 <div className="flex gap-3">
-                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="flex-1 bg-gray-100 py-3 rounded-xl">Annuler</button>
-                                    <button 
-                                        onClick={handleAddCategory} 
-                                        disabled={!newCatName.trim() || !newCatEmoji}
-                                        className={`flex-1 py-3 rounded-xl font-medium ${newCatName.trim() && newCatEmoji ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}
-                                    >
-                                        Ajouter
-                                    </button>
+                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
+                                    <button onClick={handleAddCategory} disabled={!newCatName.trim() || !newCatEmoji} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${newCatName.trim() && newCatEmoji ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>Ajouter</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* ===== ASSIGN PICKER (replaces prompt) ===== */}
+                    {assignPickerTodo && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50">
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-sm w-full p-5">
+                                <h3 className="text-lg font-bold mb-3">Qui a fait cette tâche ?</h3>
+                                <div className="space-y-2">
+                                    {users.map(u => (
+                                        <button key={u.id} onClick={() => confirmAssignTodo(assignPickerTodo, u.id)} className={`w-full ${u.color} text-white p-4 rounded-2xl flex items-center justify-center gap-3 hover:opacity-90`}>
+                                            <span className="text-2xl">{u.emoji}</span><span className="font-bold">{u.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <button onClick={() => setAssignPickerTodo(null)} className="w-full bg-gray-100 py-3 rounded-xl mt-3 text-sm">Annuler</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ===== NAV BAR (2 rows of 5) ===== */}
                     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
-                        <div className="max-w-4xl mx-auto px-2 py-1.5">
+                        <div className="max-w-4xl mx-auto px-1.5 py-1">
                             <div className="grid grid-cols-5 gap-0.5">
                                 {[
                                     { id: 'dashboard', label: 'Accueil', emoji: '🏠' },
@@ -1524,9 +1349,9 @@
                                     { id: 'courses', label: 'Courses', emoji: '🛒' },
                                     { id: 'menus', label: 'Menus', emoji: '🍽️' },
                                 ].map(tab => (
-                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-1.5 rounded-xl ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-400'}`}>
-                                        <span className="text-lg">{tab.emoji}</span>
-                                        <span className="text-[10px] leading-tight">{tab.label}</span>
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-1.5 rounded-xl transition-colors ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-400'}`}>
+                                        <span className="text-lg leading-none">{tab.emoji}</span>
+                                        <span className="text-[10px] leading-tight mt-0.5">{tab.label}</span>
                                     </button>
                                 ))}
                             </div>
@@ -1538,9 +1363,9 @@
                                     { id: 'family', label: 'Infos', emoji: '👨‍👩‍👧' },
                                     { id: 'settings', label: 'Réglages', emoji: '⚙️' },
                                 ].map(tab => (
-                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-1.5 rounded-xl ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-400'}`}>
-                                        <span className="text-lg">{tab.emoji}</span>
-                                        <span className="text-[10px] leading-tight">{tab.label}</span>
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-1.5 rounded-xl transition-colors ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-400'}`}>
+                                        <span className="text-lg leading-none">{tab.emoji}</span>
+                                        <span className="text-[10px] leading-tight mt-0.5">{tab.label}</span>
                                     </button>
                                 ))}
                             </div>
