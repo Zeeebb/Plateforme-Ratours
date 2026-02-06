@@ -281,6 +281,8 @@
             const [addType, setAddType] = useState('');
             const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
             const [editingInfo, setEditingInfo] = useState(null);
+            const [calendarEnabled, setCalendarEnabled] = useState(!!localStorage.getItem('ratours_calendar_id'));
+            const [calendarStatus, setCalendarStatus] = useState('');
 
             const [users] = useState([
                 { id: 1, name: 'Maman', color: 'bg-pink-400', emoji: '👩' },
@@ -455,7 +457,7 @@
                     await gsheets.writeSheet('courses', gsheets.objectsToArray(courses, ['id', 'item', 'category', 'checked']));
                     await gsheets.writeSheet('menus', gsheets.objectsToArray(menus, ['id', 'day', 'meal', 'emoji']));
                     const eventsForSheet = events.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                    await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
                     await gsheets.writeSheet('guardSchedule', gsheets.objectsToArray(guardSchedule, ['id', 'date', 'morning', 'afternoon', 'notes']));
                     const flatFamilyInfo = [];
                     Object.entries(familyInfo).forEach(([section, items]) => {
@@ -464,6 +466,7 @@
                         });
                     });
                     await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, ['section', 'id', 'label', 'value', 'type']));
+                    await gsheets.writeSheet('notes', gsheets.objectsToArray(notes, ['id', 'text', 'author', 'date']));
                     setLastSync(new Date());
                     console.log('✅ Sauvegarde OK');
                 } catch (error) {
@@ -499,17 +502,27 @@
             const handleAdd = () => {
                 if (addType === 'event' && newItem.title && newItem.date) {
                     const cat = categories.events.find(c => c.id === newItem.category);
-                    setEvents([...events, {
+                    const newEvent = {
                         id: Date.now(), 
                         title: newItem.title, 
                         date: newItem.date, 
                         time: newItem.time || '',
                         category: newItem.category || 'general', 
                         assignedTo: [newItem.assignedTo || currentUser],
-                        emoji: cat ? cat.emoji : '📅'
-                    }]);
+                        emoji: cat ? cat.emoji : '📅',
+                        calendarEventId: null
+                    };
+                    setEvents([...events, newEvent]);
                     setShowAddModal(false);
                     setNewItem({ title: '', date: '', time: '', category: '', priority: 'medium', assignedTo: null, day: '' });
+                    // Sync to Google Calendar if enabled (async, non-blocking)
+                    if (calendarEnabled && gsheets.calendarId) {
+                        gsheets.createCalendarEvent(newEvent).then(calEventId => {
+                            if (calEventId) {
+                                setEvents(prev => prev.map(e => e.id === newEvent.id ? { ...e, calendarEventId: calEventId } : e));
+                            }
+                        });
+                    }
                 } else if (addType === 'todo' && newItem.title) {
                     setTodos([...todos, {
                         id: Date.now(), title: newItem.title, category: newItem.category || 'general',
@@ -548,12 +561,17 @@
             const toggleCourse = (id) => setCourses(courses.map(c => c.id === id ? { ...c, checked: !c.checked } : c));
             const deleteEvent = (id) => {
                 if (confirm('Supprimer cet événement ?')) {
+                    const eventToDelete = events.find(e => e.id === id);
                     const newEvents = events.filter(e => e.id !== id);
                     setEvents(newEvents);
                     setTimeout(async () => {
                         const eventsForSheet = newEvents.map(e => ({ ...e, assignedTo: JSON.stringify(e.assignedTo) }));
-                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji']));
+                        await gsheets.writeSheet('events', gsheets.objectsToArray(eventsForSheet, ['id', 'title', 'date', 'time', 'category', 'assignedTo', 'emoji', 'calendarEventId']));
                     }, 500);
+                    // Delete from Google Calendar if enabled
+                    if (calendarEnabled && eventToDelete?.calendarEventId) {
+                        gsheets.deleteCalendarEvent(eventToDelete.calendarEventId);
+                    }
                 }
             };
             
@@ -615,6 +633,61 @@
 
             const deleteFamilyInfo = (section, id) => {
                 setFamilyInfo({ ...familyInfo, [section]: familyInfo[section].filter(item => item.id !== id) });
+            };
+
+            // === GOOGLE CALENDAR FUNCTIONS ===
+            const enableCalendar = async () => {
+                setCalendarStatus('Création du calendrier...');
+                try {
+                    // Check if we already have a saved calendar
+                    const existingId = localStorage.getItem('ratours_calendar_id');
+                    if (existingId) {
+                        gsheets.calendarId = existingId;
+                        setCalendarEnabled(true);
+                        setCalendarStatus('✅ Calendrier connecté');
+                        return;
+                    }
+                    const calId = await gsheets.createTestCalendar();
+                    if (calId) {
+                        setCalendarEnabled(true);
+                        setCalendarStatus('✅ Calendrier "Ratours TEST" créé !');
+                    } else {
+                        setCalendarStatus('❌ Erreur lors de la création');
+                    }
+                } catch (error) {
+                    console.error('Erreur Calendar:', error);
+                    setCalendarStatus('❌ Erreur : ' + error.message);
+                }
+            };
+
+            const disableCalendar = () => {
+                if (confirm('Désactiver la sync Google Calendar ?\n(Le calendrier ne sera pas supprimé)')) {
+                    localStorage.removeItem('ratours_calendar_id');
+                    gsheets.calendarId = null;
+                    setCalendarEnabled(false);
+                    setCalendarStatus('');
+                }
+            };
+
+            const syncEventsToCalendar = async () => {
+                if (!calendarEnabled || !gsheets.calendarId) return;
+                setCalendarStatus('Sync en cours...');
+                let synced = 0;
+                for (const event of events) {
+                    if (!event.calendarEventId) {
+                        const calEventId = await gsheets.createCalendarEvent(event);
+                        if (calEventId) {
+                            event.calendarEventId = calEventId;
+                            synced++;
+                        }
+                    }
+                }
+                if (synced > 0) {
+                    setEvents([...events]); // trigger re-render & auto-save
+                    setCalendarStatus(`✅ ${synced} événement(s) synchronisé(s)`);
+                } else {
+                    setCalendarStatus('✅ Tout est à jour');
+                }
             };
 
             const calculateTaskStats = () => {
@@ -749,7 +822,7 @@
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-r from-purple-400 to-pink-400 rounded-3xl p-6 text-white shadow-lg">
                                     <h2 className="text-3xl font-bold mb-2">Bonjour {currentUserData.name} ! 👋</h2>
-                                    <p className="text-purple-100">Vendredi 23 janvier 2026</p>
+                                    <p className="text-purple-100">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
                                 </div>
                                 
                                 {/* Tâches urgentes */}
@@ -813,17 +886,41 @@
 
                         {activeTab === 'calendar' && (
                             <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">📅 Agenda</h2>
-                                {events.map(event => (
+                                <div className="flex items-center justify-between">
+                                    <h2 className="text-2xl font-bold">📅 Agenda</h2>
+                                    {calendarEnabled && (
+                                        <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full">📅 Calendar actif</span>
+                                    )}
+                                </div>
+                                {events.sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || '')).map(event => (
                                     <div key={event.id} className="bg-white rounded-2xl shadow-lg p-5 flex items-start gap-4">
                                         <span className="text-4xl">{event.emoji}</span>
                                         <div className="flex-1">
                                             <h3 className="font-bold text-gray-800 mb-1">{event.title}</h3>
-                                            <p className="text-sm text-gray-600">{event.date} {event.time}</p>
+                                            <p className="text-sm text-gray-600">
+                                                {new Date(event.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                {event.time && ` à ${event.time}`}
+                                            </p>
+                                            {event.assignedTo && event.assignedTo.length > 0 && (
+                                                <div className="flex gap-1 mt-1">
+                                                    {event.assignedTo.map(uid => {
+                                                        const u = users.find(u => u.id === uid);
+                                                        return u ? <span key={uid} className="text-sm">{u.emoji}</span> : null;
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
-                                        <button onClick={() => deleteEvent(event.id)} className="text-red-400"><Icon name="x" size={20} /></button>
+                                        <div className="flex flex-col items-center gap-1">
+                                            {event.calendarEventId && <span className="text-xs text-blue-400" title="Synchronisé avec Google Calendar">📅</span>}
+                                            <button onClick={() => deleteEvent(event.id)} className="text-red-400"><Icon name="x" size={20} /></button>
+                                        </div>
                                     </div>
                                 ))}
+                                {events.length === 0 && (
+                                    <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-500">
+                                        Aucun événement. Ajoutez-en un avec le bouton + !
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -1131,6 +1228,45 @@
                                             <button onClick={() => setExternalPeople(externalPeople.filter(p => p.id !== person.id))} className="text-red-400"><Icon name="trash" size={16} /></button>
                                         </div>
                                     ))}
+                                </div>
+
+                                {/* Google Calendar */}
+                                <div className="bg-white rounded-2xl shadow-lg p-5">
+                                    <h3 className="font-bold flex items-center gap-2 mb-4"><span className="text-2xl">📅</span> Google Calendar (optionnel)</h3>
+                                    <p className="text-sm text-gray-500 mb-4">
+                                        Synchronise les événements de l'Agenda avec un calendrier Google dédié "Ratours TEST".
+                                        Le Sheet reste la source de vérité.
+                                    </p>
+                                    {!calendarEnabled ? (
+                                        <button 
+                                            onClick={enableCalendar} 
+                                            className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-xl font-semibold hover:opacity-90"
+                                        >
+                                            📅 Activer Google Calendar
+                                        </button>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl p-3">
+                                                <span className="text-lg">✅</span>
+                                                <span className="text-green-800 text-sm font-medium">Calendar activé</span>
+                                            </div>
+                                            <button 
+                                                onClick={syncEventsToCalendar} 
+                                                className="w-full bg-blue-50 border border-blue-200 text-blue-700 py-3 rounded-xl font-medium"
+                                            >
+                                                🔄 Synchroniser les événements existants
+                                            </button>
+                                            <button 
+                                                onClick={disableCalendar} 
+                                                className="w-full bg-gray-100 text-gray-600 py-2 rounded-xl text-sm"
+                                            >
+                                                Désactiver la sync Calendar
+                                            </button>
+                                        </div>
+                                    )}
+                                    {calendarStatus && (
+                                        <p className="text-sm text-gray-600 mt-3 text-center">{calendarStatus}</p>
+                                    )}
                                 </div>
 
                                 {/* Catégories Courses */}
