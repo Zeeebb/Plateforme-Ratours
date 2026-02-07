@@ -35,7 +35,7 @@
     </div>
     
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect } = React;
         
         const GOOGLE_CLIENT_ID = '988519105715-eqfihmrhgotpkund2ub9nvb3ov7nfde4.apps.googleusercontent.com';
         const SPREADSHEET_ID = '186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw';
@@ -58,6 +58,8 @@
         const NOTES_HEADERS = ['id', 'text', 'author', 'date'];
         const GUARD_HEADERS = ['id', 'date', 'morning', 'afternoon', 'notes'];
         const FAMILY_HEADERS = ['section', 'id', 'label', 'value', 'type'];
+        const CATEGORIES_HEADERS = ['section', 'id', 'name', 'emoji'];
+        const EXTERNAL_PEOPLE_HEADERS = ['id', 'name', 'emoji'];
 
         const EMOJI_PICKER = ['🏠','🏥','🏫','🎉','🎭','🎵','🎨','🏋️','🚗','✈️','🏖️','⛪','💼','💰','📦','📱','🔧','🧹','🍼','👶','👨‍👩‍👧','👵','🐶','🐱','🥖','🥗','🥩','🍕','🍰','🧁','☕','🍷','💊','🩺','📞','📝','🎁','🛍️','👗','👟','🧸','📚','🎓','⚽','🎮','🌸','🌍','❤️'];
         const DAY_ORDER = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
@@ -152,6 +154,32 @@
                 }
             }
 
+            // Create a sheet tab if it doesn't exist
+            async ensureSheet(sheetName) {
+                try {
+                    const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}:batchUpdate`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            requests: [{ addSheet: { properties: { title: sheetName } } }]
+                        })
+                    });
+                    if (response.ok) {
+                        console.log(`✅ Onglet "${sheetName}" créé`);
+                        return true;
+                    }
+                    // 400 = sheet already exists (that's fine)
+                    return response.status === 400;
+                } catch (error) {
+                    console.error(`Erreur création onglet ${sheetName}:`, error);
+                    return false;
+                }
+            }
+
             async writeSheet(sheetName, values) {
                 try {
                     // ÉTAPE 1 : CLEAR le sheet
@@ -164,9 +192,16 @@
                         }
                     });
                     
+                    if (clearResponse.status === 401 || clearResponse.status === 403) {
+                        console.warn(`⚠️ Token expiré (${clearResponse.status}) lors de l'écriture de ${sheetName}`);
+                        this.accessToken = null;
+                        localStorage.removeItem('gsheets_token');
+                        throw new Error('TOKEN_EXPIRED');
+                    }
+                    // Sheet tab doesn't exist → create it and skip CLEAR
                     if (!clearResponse.ok) {
-                        console.error(`Erreur CLEAR ${clearResponse.status}`);
-                        return false;
+                        console.log(`Onglet "${sheetName}" introuvable (${clearResponse.status}), création...`);
+                        await this.ensureSheet(sheetName);
                     }
                     
                     // ÉTAPE 2 : Écrire les nouvelles données
@@ -180,6 +215,12 @@
                         body: JSON.stringify({ values })
                     });
                     
+                    if (updateResponse.status === 401 || updateResponse.status === 403) {
+                        console.warn(`⚠️ Token expiré (${updateResponse.status}) lors de l'écriture de ${sheetName}`);
+                        this.accessToken = null;
+                        localStorage.removeItem('gsheets_token');
+                        throw new Error('TOKEN_EXPIRED');
+                    }
                     if (!updateResponse.ok) {
                         console.error(`Erreur UPDATE ${updateResponse.status}`);
                         return false;
@@ -188,6 +229,7 @@
                     return true;
                 } catch (error) {
                     console.error(`Erreur écriture ${sheetName}:`, error);
+                    if (error.message === 'TOKEN_EXPIRED') throw error;
                     return false;
                 }
             }
@@ -289,7 +331,11 @@
 
             objectsToArray(objects, headers) {
                 if (!objects || objects.length === 0) return [headers];
-                const rows = objects.map(obj => headers.map(header => obj[header] !== undefined ? String(obj[header]) : ''));
+                const rows = objects.map(obj => headers.map(header => {
+                    const val = obj[header];
+                    if (val === null || val === undefined || val === '') return '';
+                    return String(val);
+                }));
                 return [headers, ...rows];
             }
         }
@@ -327,6 +373,9 @@
             const [hideDoneTodos, setHideDoneTodos] = useState(false);
             const [assignPickerTodo, setAssignPickerTodo] = useState(null);
             const [noteText, setNoteText] = useState('');
+            const [addPersonModal, setAddPersonModal] = useState(false);
+            const [newPersonName, setNewPersonName] = useState('');
+            const [newPersonEmoji, setNewPersonEmoji] = useState('');
 
             const [users] = useState([
                 { id: 1, name: 'Maman', color: 'bg-pink-400', emoji: '👩' },
@@ -421,14 +470,18 @@
                     }
                     const eventsData = await gsheets.readSheet('events');
                     if (eventsData.length > 1) {
-                        setEvents(gsheets.arrayToObjects(eventsData).map(e => ({
-                            ...e,
-                            id: parseInt(e.id) || Date.now(),
-                            assignedTo: e.assignedTo ? JSON.parse(e.assignedTo) : [],
-                            calendarEventId: e.calendarEventId || null,
-                            endDate: e.endDate || '',
-                            emoji: e.emoji || '📅'
-                        })));
+                        setEvents(gsheets.arrayToObjects(eventsData).map(e => {
+                            let parsedAssignedTo = [];
+                            try { parsedAssignedTo = e.assignedTo ? JSON.parse(e.assignedTo) : []; } catch (err) { parsedAssignedTo = []; }
+                            return {
+                                ...e,
+                                id: parseInt(e.id) || Date.now(),
+                                assignedTo: Array.isArray(parsedAssignedTo) ? parsedAssignedTo : [],
+                                calendarEventId: e.calendarEventId || null,
+                                endDate: e.endDate || '',
+                                emoji: e.emoji || '📅'
+                            };
+                        }));
                     }
                     const guardData = await gsheets.readSheet('guardSchedule');
                     if (guardData.length > 1) {
@@ -453,6 +506,26 @@
                     if (notesData.length > 1) {
                         setNotes(gsheets.arrayToObjects(notesData).map(n => ({
                             ...n, id: parseInt(n.id) || Date.now(), author: parseInt(n.author) || currentUser, date: n.date || new Date().toISOString().split('T')[0]
+                        })));
+                    }
+                    // Load categories
+                    const categoriesData = await gsheets.readSheet('categories');
+                    if (categoriesData.length > 1) {
+                        const catObjects = gsheets.arrayToObjects(categoriesData);
+                        const reconstructedCats = { courses: [], todos: [], events: [] };
+                        catObjects.forEach(cat => {
+                            if (reconstructedCats[cat.section]) {
+                                reconstructedCats[cat.section].push({ id: cat.id, name: cat.name, emoji: cat.emoji });
+                            }
+                        });
+                        // Only overwrite if we got data (preserve defaults on first use)
+                        if (catObjects.length > 0) setCategories(reconstructedCats);
+                    }
+                    // Load external people
+                    const extPeopleData = await gsheets.readSheet('externalPeople');
+                    if (extPeopleData.length > 1) {
+                        setExternalPeople(gsheets.arrayToObjects(extPeopleData).map(p => ({
+                            ...p, id: parseInt(p.id)
                         })));
                     }
                     setLastSync(new Date());
@@ -484,8 +557,22 @@
                     });
                     await gsheets.writeSheet('familyInfo', gsheets.objectsToArray(flatFamilyInfo, FAMILY_HEADERS));
                     await gsheets.writeSheet('notes', gsheets.objectsToArray(notes, NOTES_HEADERS));
+                    // Sync categories (flattened)
+                    const flatCategories = [];
+                    Object.entries(categories).forEach(([section, cats]) => {
+                        cats.forEach(cat => { flatCategories.push({ section, id: cat.id, name: cat.name, emoji: cat.emoji }); });
+                    });
+                    await gsheets.writeSheet('categories', gsheets.objectsToArray(flatCategories, CATEGORIES_HEADERS));
+                    // Sync external people
+                    await gsheets.writeSheet('externalPeople', gsheets.objectsToArray(externalPeople, EXTERNAL_PEOPLE_HEADERS));
                     setLastSync(new Date());
-                } catch (error) { console.error('Erreur sauvegarde:', error); }
+                } catch (error) {
+                    console.error('Erreur sauvegarde:', error);
+                    if (error.message === 'TOKEN_EXPIRED') {
+                        setIsAuthenticated(false);
+                        setHasLoadedFromCloud(false);
+                    }
+                }
                 setIsSyncing(false);
             };
 
@@ -495,8 +582,7 @@
                 if (success) {
                     setIsAuthenticated(true);
                     setHasLoadedFromCloud(false);
-                    // If user already selected a profile, sync now
-                    if (currentUser) await syncFromCloud();
+                    // useEffect [currentUser, isAuthenticated] will trigger syncFromCloud
                 }
             };
 
@@ -506,7 +592,7 @@
                     const timer = setTimeout(() => syncToCloud(), 1000);
                     return () => clearTimeout(timer);
                 }
-            }, [todos, courses, menus, events, guardSchedule, familyInfo, notes, isAuthenticated, currentUser, hasLoadedFromCloud]);
+            }, [todos, courses, menus, events, guardSchedule, familyInfo, notes, categories, externalPeople, isAuthenticated, currentUser, hasLoadedFromCloud]);
 
             // ===== HANDLERS =====
             const handleAdd = () => {
@@ -646,13 +732,14 @@
                 if (!calendarEnabled || !gsheets.calendarId) return;
                 setCalendarStatus('Sync en cours...');
                 let synced = 0;
-                for (const event of events) {
-                    if (!event.calendarEventId) {
-                        const calEventId = await gsheets.createCalendarEvent(event);
-                        if (calEventId) { event.calendarEventId = calEventId; synced++; }
+                const updatedEvents = [...events];
+                for (let i = 0; i < updatedEvents.length; i++) {
+                    if (!updatedEvents[i].calendarEventId) {
+                        const calEventId = await gsheets.createCalendarEvent(updatedEvents[i]);
+                        if (calEventId) { updatedEvents[i] = { ...updatedEvents[i], calendarEventId: calEventId }; synced++; }
                     }
                 }
-                if (synced > 0) { setEvents([...events]); setCalendarStatus(`✅ ${synced} synchronisé(s)`); }
+                if (synced > 0) { setEvents(updatedEvents); setCalendarStatus(`✅ ${synced} synchronisé(s)`); }
                 else { setCalendarStatus('✅ Tout est à jour'); }
             };
 
@@ -801,7 +888,9 @@
                                         {lastSync && <span>{lastSync.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>}
                                     </button>
                                 )}
-                                <button onClick={handleGoogleLogout} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg text-xs">Déco</button>
+                                {isAuthenticated && (
+                                    <button onClick={handleGoogleLogout} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg text-xs">Déco</button>
+                                )}
                                 <button onClick={() => setCurrentUser(null)} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg">
                                     <Icon name="logout" size={14} />
                                 </button>
@@ -986,6 +1075,33 @@
                                         </div>
                                     );
                                 })}
+
+                                {/* Catch-all: assigned todos whose category isn't in the list */}
+                                {(() => {
+                                    const knownCatIds = categories.todos.map(c => c.id);
+                                    const orphans = todos.filter(t => t.assignedTo && !knownCatIds.includes(t.category) && (!hideDoneTodos || !t.done));
+                                    return orphans.length > 0 ? (
+                                        <div className="bg-white rounded-2xl shadow p-4">
+                                            <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm">📋 Autres</h3>
+                                            {orphans.map(todo => (
+                                                <div key={todo.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                                                    <div className="flex items-center gap-3 flex-1">
+                                                        <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
+                                                        <span className={`text-sm ${todo.done ? 'line-through text-gray-400' : ''}`}>{todo.title}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {todo.priority === 'high' && <span className="text-xs">🔴</span>}
+                                                        {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
+                                                        <span className="text-xs">{users.find(u => u.id === todo.assignedTo)?.emoji}</span>
+                                                        <button onClick={() => deleteTodo(todo.id)} className="text-red-400 ml-1"><Icon name="x" size={14} /></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : null;
+                                })()}
+
+                                {todos.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucune tâche — ajoutez-en via le bouton +</div>}
                             </div>
                         )}
 
@@ -1021,6 +1137,7 @@
                                         </div>
                                     );
                                 })}
+                                {courses.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucune course — ajoutez-en via le bouton +</div>}
                             </div>
                         )}
 
@@ -1229,14 +1346,7 @@
                                 <div className="bg-white rounded-2xl shadow p-4">
                                     <div className="flex justify-between items-center mb-2">
                                         <h3 className="font-bold text-sm">👥 Personnes externes</h3>
-                                        <button onClick={() => {
-                                            const name = prompt('Nom :');
-                                            const emoji = prompt('Emoji :');
-                                            if (name && emoji) {
-                                                const maxId = Math.max(...externalPeople.map(p => p.id), ...users.map(u => u.id));
-                                                setExternalPeople([...externalPeople, { id: maxId + 1, name, emoji }]);
-                                            }
-                                        }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
+                                        <button onClick={() => { setAddPersonModal(true); setNewPersonName(''); setNewPersonEmoji(''); }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                     </div>
                                     {externalPeople.map(person => (
                                         <div key={person.id} className="py-2 border-b last:border-0 flex justify-between items-center">
@@ -1410,6 +1520,40 @@
                                     ))}
                                 </div>
                                 <button onClick={() => setAssignPickerTodo(null)} className="w-full bg-gray-100 py-3 rounded-xl mt-3 text-sm">Annuler</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ===== ADD EXTERNAL PERSON MODAL ===== */}
+                    {addPersonModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50" onClick={(e) => { if (e.target === e.currentTarget) setAddPersonModal(false); }}>
+                            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-md w-full p-5">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-lg font-bold">Ajouter une personne</h3>
+                                    <button onClick={() => setAddPersonModal(false)} className="text-gray-400"><Icon name="x" size={20} /></button>
+                                </div>
+                                <input type="text" placeholder="Nom" value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
+                                <p className="text-xs text-gray-500 mb-2">Choisir un emoji :</p>
+                                <div className="grid grid-cols-8 gap-1.5 mb-3 max-h-36 overflow-y-auto p-1">
+                                    {['👵','👴','🧑‍🍼','👩‍🏫','👨‍⚕️','👩‍⚕️','🧑','👧','👦','🧓','👩‍🦰','👨‍🦱','🧑‍🤝‍🧑','👫','🧒','👶'].map(em => (
+                                        <button key={em} onClick={() => setNewPersonEmoji(em)} className={`text-xl p-1.5 rounded-lg hover:bg-purple-50 transition-all ${newPersonEmoji === em ? 'bg-purple-100 ring-2 ring-purple-400 scale-110' : ''}`}>{em}</button>
+                                    ))}
+                                </div>
+                                {newPersonEmoji && newPersonName.trim() && (
+                                    <div className="flex items-center gap-2 bg-purple-50 rounded-xl p-3 mb-3">
+                                        <span className="text-xl">{newPersonEmoji}</span><span className="font-medium text-sm">{newPersonName}</span>
+                                    </div>
+                                )}
+                                <div className="flex gap-3">
+                                    <button onClick={() => setAddPersonModal(false)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
+                                    <button onClick={() => {
+                                        if (newPersonName.trim() && newPersonEmoji) {
+                                            const maxId = Math.max(...externalPeople.map(p => p.id), ...users.map(u => u.id));
+                                            setExternalPeople([...externalPeople, { id: maxId + 1, name: newPersonName.trim(), emoji: newPersonEmoji }]);
+                                            setAddPersonModal(false);
+                                        }
+                                    }} disabled={!newPersonName.trim() || !newPersonEmoji} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${newPersonName.trim() && newPersonEmoji ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>Ajouter</button>
+                                </div>
                             </div>
                         </div>
                     )}
