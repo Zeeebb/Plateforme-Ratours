@@ -115,8 +115,7 @@
                         headers: { 'Authorization': `Bearer ${this.accessToken}` }
                     });
                     if (response.ok) return true;
-                    // Token expired or invalid
-                    console.log('⚠️ Token expiré, nettoyage...');
+                    console.log('⚠️ Token expiré, tentative de refresh silencieux...');
                     this.accessToken = null;
                     localStorage.removeItem('gsheets_token');
                     return false;
@@ -128,6 +127,31 @@
                 }
             }
 
+            // Try to get a new token silently (no popup if consent already granted)
+            silentRefresh() {
+                return new Promise((resolve) => {
+                    if (!this.tokenClient) { resolve(false); return; }
+                    // Timeout: if no response in 3s, silent refresh failed
+                    const timeout = setTimeout(() => { resolve(false); }, 3000);
+                    this.tokenClient.callback = (response) => {
+                        clearTimeout(timeout);
+                        if (response.access_token) {
+                            this.accessToken = response.access_token;
+                            localStorage.setItem('gsheets_token', response.access_token);
+                            resolve(true);
+                        } else {
+                            resolve(false);
+                        }
+                    };
+                    this.tokenClient.error_callback = () => {
+                        clearTimeout(timeout);
+                        resolve(false);
+                    };
+                    // prompt: '' = no popup, silent only
+                    this.tokenClient.requestAccessToken({ prompt: '' });
+                });
+            }
+
             logout() {
                 this.accessToken = null;
                 localStorage.removeItem('gsheets_token');
@@ -136,14 +160,23 @@
             async readSheet(sheetName) {
                 try {
                     const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A:Z`;
-                    const response = await fetch(url, {
+                    let response = await fetch(url, {
                         headers: { 'Authorization': `Bearer ${this.accessToken}` }
                     });
                     if (response.status === 401 || response.status === 403) {
-                        console.warn(`⚠️ Token expiré (${response.status}) lors de la lecture de ${sheetName}`);
-                        this.accessToken = null;
-                        localStorage.removeItem('gsheets_token');
-                        throw new Error('TOKEN_EXPIRED');
+                        // Try silent refresh before giving up
+                        console.log(`⚠️ Token expiré lors de la lecture de ${sheetName}, refresh...`);
+                        const refreshed = await this.silentRefresh();
+                        if (refreshed) {
+                            response = await fetch(url, {
+                                headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                            });
+                        }
+                        if (!refreshed || response.status === 401 || response.status === 403) {
+                            this.accessToken = null;
+                            localStorage.removeItem('gsheets_token');
+                            throw new Error('TOKEN_EXPIRED');
+                        }
                     }
                     const result = await response.json();
                     return result.values || [];
@@ -182,22 +215,30 @@
 
             async writeSheet(sheetName, values) {
                 try {
+                    // Helper: make an authenticated fetch, retry once with silent refresh on 401
+                    const authFetch = async (url, options) => {
+                        let response = await fetch(url, { ...options, headers: { ...options.headers, 'Authorization': `Bearer ${this.accessToken}` } });
+                        if (response.status === 401 || response.status === 403) {
+                            console.log(`⚠️ Token expiré lors de l'écriture de ${sheetName}, refresh...`);
+                            const refreshed = await this.silentRefresh();
+                            if (refreshed) {
+                                response = await fetch(url, { ...options, headers: { ...options.headers, 'Authorization': `Bearer ${this.accessToken}` } });
+                            }
+                            if (!refreshed || response.status === 401 || response.status === 403) {
+                                this.accessToken = null;
+                                localStorage.removeItem('gsheets_token');
+                                throw new Error('TOKEN_EXPIRED');
+                            }
+                        }
+                        return response;
+                    };
+
                     // ÉTAPE 1 : CLEAR le sheet
                     const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A:Z:clear`;
-                    const clearResponse = await fetch(clearUrl, {
+                    const clearResponse = await authFetch(clearUrl, {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`,
-                            'Content-Type': 'application/json',
-                        }
+                        headers: { 'Content-Type': 'application/json' }
                     });
-                    
-                    if (clearResponse.status === 401 || clearResponse.status === 403) {
-                        console.warn(`⚠️ Token expiré (${clearResponse.status}) lors de l'écriture de ${sheetName}`);
-                        this.accessToken = null;
-                        localStorage.removeItem('gsheets_token');
-                        throw new Error('TOKEN_EXPIRED');
-                    }
                     // Sheet tab doesn't exist → create it and skip CLEAR
                     if (!clearResponse.ok) {
                         console.log(`Onglet "${sheetName}" introuvable (${clearResponse.status}), création...`);
@@ -206,21 +247,11 @@
                     
                     // ÉTAPE 2 : Écrire les nouvelles données
                     const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetName}!A1?valueInputOption=RAW`;
-                    const updateResponse = await fetch(updateUrl, {
+                    const updateResponse = await authFetch(updateUrl, {
                         method: 'PUT',
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`,
-                            'Content-Type': 'application/json',
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ values })
                     });
-                    
-                    if (updateResponse.status === 401 || updateResponse.status === 403) {
-                        console.warn(`⚠️ Token expiré (${updateResponse.status}) lors de l'écriture de ${sheetName}`);
-                        this.accessToken = null;
-                        localStorage.removeItem('gsheets_token');
-                        throw new Error('TOKEN_EXPIRED');
-                    }
                     if (!updateResponse.ok) {
                         console.error(`Erreur UPDATE ${updateResponse.status}`);
                         return false;
@@ -357,7 +388,10 @@
             const [isLoading, setIsLoading] = useState(true);
             const [hasLoadedFromCloud, setHasLoadedFromCloud] = useState(false);
             const [lastSync, setLastSync] = useState(null);
-            const [currentUser, setCurrentUser] = useState(null);
+            const [currentUser, setCurrentUser] = useState(() => {
+                const saved = localStorage.getItem('ratours_current_user');
+                return saved ? parseInt(saved) : null;
+            });
             const [activeTab, setActiveTab] = useState('dashboard');
             const [showAddModal, setShowAddModal] = useState(false);
             const [addType, setAddType] = useState('');
@@ -421,15 +455,36 @@
 
             const allPeople = [...users, ...externalPeople];
 
-            // ===== GOOGLE INIT (validate token on startup) =====
+            // ===== PERSIST USER CHOICE =====
+            useEffect(() => {
+                if (currentUser) localStorage.setItem('ratours_current_user', String(currentUser));
+                else localStorage.removeItem('ratours_current_user');
+            }, [currentUser]);
+
+            // ===== GOOGLE INIT (validate token, try silent refresh) =====
             useEffect(() => {
                 const initGoogle = async () => {
                     await gsheets.initialize();
                     setIsGoogleReady(true);
                     if (gsheets.accessToken) {
-                        // Validate saved token — may be expired
                         const valid = await gsheets.validateToken();
-                        setIsAuthenticated(valid);
+                        if (valid) {
+                            setIsAuthenticated(true);
+                        } else {
+                            // Token expired → try silent refresh (no popup)
+                            console.log('🔄 Tentative de refresh silencieux...');
+                            const refreshed = await gsheets.silentRefresh();
+                            setIsAuthenticated(refreshed);
+                            if (!refreshed) console.log('❌ Refresh silencieux échoué, connexion manuelle requise');
+                        }
+                    } else {
+                        // No saved token but user was logged in before → try silent refresh
+                        const hadUser = localStorage.getItem('ratours_current_user');
+                        if (hadUser) {
+                            console.log('🔄 Pas de token sauvé, tentative de refresh silencieux...');
+                            const refreshed = await gsheets.silentRefresh();
+                            setIsAuthenticated(refreshed);
+                        }
                     }
                     setIsLoading(false);
                 };
@@ -438,7 +493,6 @@
                     const checkGoogle = setInterval(() => {
                         if (window.google) { clearInterval(checkGoogle); initGoogle(); }
                     }, 100);
-                    // Timeout fallback: stop waiting after 5s
                     setTimeout(() => { clearInterval(checkGoogle); setIsLoading(false); setIsGoogleReady(true); }, 5000);
                 }
             }, []);
@@ -891,7 +945,7 @@
                                 {isAuthenticated && (
                                     <button onClick={handleGoogleLogout} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg text-xs">Déco</button>
                                 )}
-                                <button onClick={() => setCurrentUser(null)} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg">
+                                <button onClick={() => { setCurrentUser(null); setHasLoadedFromCloud(false); }} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg">
                                     <Icon name="logout" size={14} />
                                 </button>
                             </div>
