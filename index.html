@@ -8,32 +8,54 @@
     <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
     <link rel="preconnect" href="https://accounts.google.com" crossorigin>
     <link rel="preconnect" href="https://sheets.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Quicksand', 'sans-serif'] },
+            colors: {
+              primary: { DEFAULT: '#cccce8', light: '#e8e8f4', dark: '#5a5981' },
+              secondary: { DEFAULT: '#adbe70' },
+              accent: { DEFAULT: '#f16f33' },
+            }
+          }
+        }
+      }
+    </script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #fce4ec, #e8eaf6, #e3f2fd); -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Quicksand', sans-serif; background: #fde2aa; -webkit-tap-highlight-color: transparent; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .loader-spinner { width: 40px; height: 40px; border: 4px solid #e9d5ff; border-top: 4px solid #a855f7; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes dotPulse { 0%,80%,100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } }
+        .loader-dots { display: flex; gap: 8px; }
+        .loader-dots span { width: 10px; height: 10px; border-radius: 50%; background: #cccce8; animation: dotPulse 1.2s ease-in-out infinite; }
+        .loader-dots span:nth-child(2) { animation-delay: 0.15s; }
+        .loader-dots span:nth-child(3) { animation-delay: 0.3s; }
+        .loader-spinner { width: 40px; height: 40px; border: 4px solid #e8e8f4; border-top: 4px solid #cccce8; border-radius: 50%; animation: spin 0.8s linear infinite; }
         #splash-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 16px; animation: fadeIn 0.3s ease; }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
-        /* Prevent iOS zoom on input focus */
         input, select, textarea { font-size: 16px !important; }
+        .card-themed { background: #fefbe8; border-radius: 8px; box-shadow: 0 1px 3px rgba(90,89,129,0.5); }
     </style>
 </head>
 <body>
     <div id="root">
         <div id="splash-screen">
-            <div style="font-size:56px">🏠</div>
-            <div style="font-size:22px;font-weight:700;color:#6b21a8">Plateforme Ratours</div>
-            <div class="loader-spinner"></div>
-            <div style="font-size:12px;color:#9ca3af">Chargement...</div>
+            <svg width="56" height="56" viewBox="0 0 40 40"><rect x="6" y="6" width="27" height="27" rx="3" fill="#adbe70" transform="rotate(45 20 20)"/></svg>
+            <div style="font-size:22px;font-weight:700;color:#5a5981">Plateforme Ratours</div>
+            <div class="loader-dots"><span></span><span></span><span></span></div>
+            <div style="font-size:12px;color:#7f7db0">Chargement...</div>
         </div>
     </div>
     
@@ -43,14 +65,37 @@
         const GOOGLE_CLIENT_ID = '988519105715-eqfihmrhgotpkund2ub9nvb3ov7nfde4.apps.googleusercontent.com';
         const SPREADSHEET_ID = '186a_JILQOYaF52HWNWunctYmriWTYaRIo4rlDscixcw';
         
-        const Icon = ({ name, size = 24 }) => {
-            const icons = {
-                home: "🏠", calendar: "📅", check: "✓", cart: "🛒",
-                chef: "🍽️", users: "👨‍👩‍👧", logout: "→", settings: "⚙️",
-                chart: "📊", baby: "👶", plus: "+", x: "×",
-                edit: "✏️", save: "💾", trash: "🗑️", cloud: "☁️", sync: "🔄"
+        const Icon = ({ name, size = 24, color }) => {
+            const s = size;
+            const paths = {
+                home: `<path d="M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8H96a8,8,0,0,0,8-8V160h48v56a8,8,0,0,0,8,8h56a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68Z"/>`,
+                calendar: `<path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM48,80H208v128H48Z"/>`,
+                check: `<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/>`,
+                cart: `<path d="M230.14,58.87A8,8,0,0,0,224,56H62.68L56.6,22.57A8,8,0,0,0,48.73,16H24a8,8,0,0,0,0,16H41.72L70.46,176.65a24,24,0,1,0,30.05,5.35H170.1a24,24,0,1,0,25.81-7.47L210.42,72H224A8,8,0,0,0,230.14,58.87Z"/>`,
+                chef: `<path d="M240,104a64,64,0,0,0-128-2.11A64,64,0,0,0,48,104c0,9.83,2.41,19.21,6.93,28.88L40.68,215.72A8,8,0,0,0,48,224h160a8,8,0,0,0,7.32-8.28L201.07,132.88A63.42,63.42,0,0,0,240,104Z"/>`,
+                users: `<path d="M164.47,195.63a8,8,0,0,1-6.7,12.37H16.23a8,8,0,0,1-6.7-12.37,80.15,80.15,0,0,1,44.52-34.92,48,48,0,1,1,65.95,0A80.15,80.15,0,0,1,164.47,195.63Z"/>`,
+                settings: `<path d="M128,80a48,48,0,1,0,48,48A48,48,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"/>`,
+                chart: `<path d="M224,200h-8V40a8,8,0,0,0-8-8H152a8,8,0,0,0-8,8V80H96a8,8,0,0,0-8,8v40H48a8,8,0,0,0-8,8v64H32a8,8,0,0,0,0,16H224a8,8,0,0,0,0-16Z"/>`,
+                baby: `<path d="M92,140a12,12,0,1,1,12-12A12,12,0,0,1,92,140Zm72-24a12,12,0,1,0,12,12A12,12,0,0,0,164,116ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Z"/>`,
+                notes: `<path d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48Z"/>`,
+                plus: `<path d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"/>`,
+                x: `<path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/>`,
+                trash: `<path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"/>`,
+                edit: `<path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63Z"/>`,
+                cloud: `<path d="M160,40A88.09,88.09,0,0,0,81.29,88.68,64,64,0,1,0,72,216h88a88,88,0,0,0,0-176Z"/>`,
+                sync: `<path d="M128,24A104,104,0,0,0,36.18,176.88,8,8,0,1,0,50,168.09a88,88,0,1,1,148.36,3.79,8,8,0,1,0,13.17,9.11A104,104,0,0,0,128,24Z"/>`,
+                save: `<path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31Z"/>`,
+                logout: `<path d="M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z"/>`,
+                star: `<path d="M234.29,114.85l-45,38.83L203,211.75a16.4,16.4,0,0,1-24.5,17.82L128,198.49,77.47,229.57A16.4,16.4,0,0,1,53,211.75l13.76-58.07-45-38.83A16.46,16.46,0,0,1,31.08,92l59.46-5.15,23.21-55.36a16.4,16.4,0,0,1,30.5,0l23.21,55.36L226.92,92a16.46,16.46,0,0,1,7.37,22.85Z"/>`,
+                search: `<path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/>`,
+                heart: `<path d="M240,98a57.63,57.63,0,0,1-17,41L128,234,33,139A58,58,0,0,1,74,40a57.85,57.85,0,0,1,54,36.06A57.85,57.85,0,0,1,182,40,58,58,0,0,1,240,98Z"/>`,
             };
-            return <span style={{ fontSize: size }}>{icons[name] || "•"}</span>;
+            const p = paths[name];
+            if (!p) return React.createElement('span', {style: {fontSize: size}}, '•');
+            return React.createElement('span', {
+                style: { display: 'inline-flex', width: s, height: s },
+                dangerouslySetInnerHTML: { __html: `<svg width="${s}" height="${s}" viewBox="0 0 256 256" fill="${color || 'currentColor'}">${p}</svg>` }
+            });
         };
 
         // ===== HEADERS CONSTANTS =====
@@ -72,7 +117,7 @@
                 this.accessToken = null;
                 this.tokenClient = null;
                 this.spreadsheetId = SPREADSHEET_ID;
-                this.calendarId = localStorage.getItem('ratours_calendar_id') || null;
+                this.calendarId = null; // loaded from Sheet settings (shared)
             }
 
             initialize() {
@@ -269,30 +314,38 @@
             }
 
             // === GOOGLE CALENDAR ===
-            async createTestCalendar() {
+            // List user's Google Calendars
+            async listCalendars() {
                 try {
-                    const url = 'https://www.googleapis.com/calendar/v3/calendars';
+                    const url = 'https://www.googleapis.com/calendar/v3/users/me/calendarList';
                     const response = await fetch(url, {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            summary: 'Ratours TEST',
-                            description: 'Calendrier de test pour Plateforme Ratours',
-                            timeZone: 'Europe/Paris'
-                        })
+                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
                     });
-                    if (!response.ok) return null;
-                    const calendar = await response.json();
-                    this.calendarId = calendar.id;
-                    localStorage.setItem('ratours_calendar_id', calendar.id);
-                    return calendar.id;
-                } catch (error) {
-                    console.error('Erreur création calendrier:', error);
+                    if (!response.ok) return [];
+                    const data = await response.json();
+                    return (data.items || []).map(c => ({ id: c.id, name: c.summary }));
+                } catch (e) { console.error('Erreur listCalendars:', e); return []; }
+            }
+
+            // Save calendar ID to Sheet settings (shared across all users)
+            async saveCalendarIdToSheet(calId) {
+                try {
+                    await this.ensureSheet('settings');
+                    await this.writeSheet('settings', [['key', 'value'], ['calendarId', calId]]);
+                } catch(e) { console.error('Erreur save calendarId:', e); }
+            }
+
+            // Read calendar ID from Sheet settings
+            async loadCalendarIdFromSheet() {
+                try {
+                    const data = await this.readSheet('settings');
+                    if (data.length > 1) {
+                        const rows = this.arrayToObjects(data);
+                        const row = rows.find(r => r.key === 'calendarId');
+                        if (row && row.value) return row.value;
+                    }
                     return null;
-                }
+                } catch(e) { return null; }
             }
 
             async createCalendarEvent(event) {
@@ -402,8 +455,10 @@
             const [editingInfo, setEditingInfo] = useState(null);
             const [infoLabel, setInfoLabel] = useState('');
             const [infoValue, setInfoValue] = useState('');
-            const [calendarEnabled, setCalendarEnabled] = useState(!!localStorage.getItem('ratours_calendar_id'));
+            const [calendarEnabled, setCalendarEnabled] = useState(false);
             const [calendarStatus, setCalendarStatus] = useState('');
+            const [availableCalendars, setAvailableCalendars] = useState([]);
+            const [showCalendarPicker, setShowCalendarPicker] = useState(false);
             const [addCategoryModal, setAddCategoryModal] = useState(null);
             const [newCatName, setNewCatName] = useState('');
             const [newCatEmoji, setNewCatEmoji] = useState('');
@@ -415,9 +470,23 @@
             const [newPersonEmoji, setNewPersonEmoji] = useState('');
 
             const [users] = useState([
-                { id: 1, name: 'Maman', color: 'bg-pink-400', emoji: '👩' },
-                { id: 2, name: 'Papa', color: 'bg-blue-400', emoji: '👨' },
+                { id: 1, name: 'Maman', color: '#adbe70', emoji: '👩', shape: 'diamond' },
+                { id: 2, name: 'Papa', color: '#cccce8', emoji: '👨', shape: 'pentagon' },
             ]);
+            
+            // SVG Avatar helper
+            const AvatarSVG = ({shape, color, size}) => {
+                const shapes = {
+                    diamond: `<rect x="6" y="6" width="27" height="27" rx="3" fill="${color}" transform="rotate(45 20 20)"/>`,
+                    pentagon: `<polygon points="20,2 38,15 31,36 9,36 2,15" fill="${color}"/>`,
+                    circle: `<circle cx="20" cy="20" r="17" fill="${color}"/>`,
+                    hexagon: `<polygon points="20,2 36,11 36,29 20,38 4,29 4,11" fill="${color}"/>`,
+                };
+                return React.createElement('span', {
+                    style: { display: 'inline-flex', width: size, height: size },
+                    dangerouslySetInnerHTML: { __html: `<svg width="${size}" height="${size}" viewBox="0 0 40 40">${shapes[shape] || shapes.circle}</svg>` }
+                });
+            };
             const [externalPeople, setExternalPeople] = useState([
                 { id: 4, name: 'Mamie', emoji: '👵' },
                 { id: 5, name: 'Nounou', emoji: '🧑‍🍼' },
@@ -559,7 +628,13 @@
                         });
                         setFamilyInfo(reconstructed);
                     }
-                    const notesData = await gsheets.readSheet('notes');
+                    // FIX: try both "notes" and "Notes" tab names (Google Sheets is case-sensitive)
+                    let notesData = await gsheets.readSheet('notes');
+                    if (notesData.length <= 1) {
+                        console.log('⚠️ Tab "notes" vide ou inexistant, essai "Notes"...');
+                        notesData = await gsheets.readSheet('Notes');
+                    }
+                    console.log('📝 Notes data:', notesData.length, 'rows');
                     if (notesData.length > 1) {
                         setNotes(gsheets.arrayToObjects(notesData).map(n => ({
                             ...n, id: parseInt(n.id) || Date.now(), author: parseInt(n.author) || currentUser, date: n.date || new Date().toISOString().split('T')[0]
@@ -584,6 +659,12 @@
                         setExternalPeople(gsheets.arrayToObjects(extPeopleData).map(p => ({
                             ...p, id: parseInt(p.id)
                         })));
+                    }
+                    // Load shared calendar ID from Sheet
+                    const sharedCalId = await gsheets.loadCalendarIdFromSheet();
+                    if (sharedCalId) {
+                        gsheets.calendarId = sharedCalId;
+                        setCalendarEnabled(true);
                     }
                     setLastSync(new Date());
                     setHasLoadedFromCloud(true);
@@ -749,18 +830,29 @@
                 }
             };
 
-            // FIX: notes with controlled state + send button
+            // FIX: notes with controlled state + send button + explicit write
             const addNote = () => {
                 if (noteText && noteText.trim().length > 0 && noteText.length <= 300) {
-                    setNotes([{ id: Date.now(), text: noteText.trim(), author: currentUser, date: new Date().toISOString().split('T')[0] }, ...notes]);
+                    const newNotes = [{ id: Date.now(), text: noteText.trim(), author: currentUser, date: new Date().toISOString().split('T')[0] }, ...notes];
+                    setNotes(newNotes);
                     setNoteText('');
+                    // Explicit write to ensure notes are saved
+                    if (isAuthenticated) {
+                        console.log('📝 Writing', newNotes.length, 'notes to sheet...');
+                        setTimeout(async () => {
+                            try { await gsheets.writeSheet('notes', gsheets.objectsToArray(newNotes, NOTES_HEADERS)); console.log('✅ Notes saved'); }
+                            catch(e) { console.error('❌ Notes write failed:', e); }
+                        }, 300);
+                    }
                 }
             };
             const deleteNote = (id) => {
                 if (confirm('Supprimer cette note ?')) {
                     const newNotes = notes.filter(n => n.id !== id);
                     setNotes(newNotes);
-                    setTimeout(async () => { await gsheets.writeSheet('notes', gsheets.objectsToArray(newNotes, NOTES_HEADERS)); }, 500);
+                    if (isAuthenticated) {
+                        setTimeout(async () => { await gsheets.writeSheet('notes', gsheets.objectsToArray(newNotes, NOTES_HEADERS)); }, 500);
+                    }
                 }
             };
 
@@ -770,18 +862,29 @@
 
             // ===== CALENDAR =====
             const enableCalendar = async () => {
-                setCalendarStatus('Création du calendrier...');
+                setCalendarStatus('Chargement des calendriers...');
                 try {
-                    const existingId = localStorage.getItem('ratours_calendar_id');
-                    if (existingId) { gsheets.calendarId = existingId; setCalendarEnabled(true); setCalendarStatus('✅ Connecté'); return; }
-                    const calId = await gsheets.createTestCalendar();
-                    if (calId) { setCalendarEnabled(true); setCalendarStatus('✅ Calendrier créé !'); }
-                    else { setCalendarStatus('❌ Erreur création'); }
+                    const cals = await gsheets.listCalendars();
+                    if (cals.length > 0) {
+                        setAvailableCalendars(cals);
+                        setShowCalendarPicker(true);
+                        setCalendarStatus('');
+                    } else {
+                        setCalendarStatus('❌ Aucun calendrier trouvé');
+                    }
                 } catch (e) { setCalendarStatus('❌ ' + e.message); }
+            };
+            const selectCalendar = async (calId, calName) => {
+                gsheets.calendarId = calId;
+                await gsheets.saveCalendarIdToSheet(calId);
+                setCalendarEnabled(true);
+                setShowCalendarPicker(false);
+                setCalendarStatus(`✅ "${calName}" sélectionné`);
             };
             const disableCalendar = () => {
                 if (confirm('Désactiver la sync Google Calendar ?')) {
-                    localStorage.removeItem('ratours_calendar_id'); gsheets.calendarId = null;
+                    gsheets.calendarId = null;
+                    gsheets.saveCalendarIdToSheet('');
                     setCalendarEnabled(false); setCalendarStatus('');
                 }
             };
@@ -867,11 +970,11 @@
             // ===== LOADING SCREEN =====
             if (isLoading) {
                 return (
-                    <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex flex-col items-center justify-center gap-4">
+                    <div className="min-h-screen bg-[#fde2aa] flex flex-col items-center justify-center gap-4">
                         <div className="text-6xl">🏠</div>
-                        <h1 className="text-2xl font-bold text-purple-800">Plateforme Ratours</h1>
-                        <div className="loader-spinner"></div>
-                        <p className="text-sm text-gray-500">Connexion en cours...</p>
+                        <h1 className="text-2xl font-bold text-[#5a5981]">Plateforme Ratours</h1>
+                        <div className="loader-dots"><span></span><span></span><span></span></div>
+                        <p className="text-sm text-[#7f7db0]">Connexion en cours...</p>
                     </div>
                 );
             }
@@ -879,17 +982,17 @@
             // ===== LOGIN SCREEN =====
             if (!currentUser) {
                 return (
-                    <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex items-center justify-center p-6">
-                        <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full">
+                    <div className="min-h-screen bg-[#fde2aa] flex items-center justify-center p-6">
+                        <div className="bg-[#fefbe8] rounded-3xl shadow-2xl p-8 max-w-md w-full">
                             <div className="text-center mb-8">
                                 <div className="text-6xl mb-4">🏠</div>
-                                <h1 className="text-3xl font-bold text-gray-800 mb-2">Plateforme Ratours</h1>
-                                <p className="text-gray-600">Qui se connecte ?</p>
+                                <h1 className="text-3xl font-bold text-[#5a5981] mb-2">Plateforme Ratours</h1>
+                                <p className="text-[#5a5981]">Qui se connecte ?</p>
                             </div>
                             {isGoogleReady && !isAuthenticated && (
-                                <div className="mb-6 p-4 bg-blue-50 rounded-2xl border-2 border-blue-200">
+                                <div className="mb-6 p-4 bg-[#f0eff8] rounded-2xl border-2 border-blue-200">
                                     <p className="text-sm text-blue-800 mb-3">☁️ Connectez-vous pour synchroniser</p>
-                                    <button onClick={handleGoogleLogin} className="w-full bg-white border-2 border-gray-300 text-gray-700 px-4 py-3 rounded-xl hover:bg-gray-50 flex items-center justify-center gap-2">
+                                    <button onClick={handleGoogleLogin} className="w-full bg-white border-2 border-gray-300 text-[#5a5981] px-4 py-3 rounded-xl hover:bg-gray-50 flex items-center justify-center gap-2">
                                         <Icon name="cloud" size={20} />
                                         <span className="font-medium">Se connecter avec Google</span>
                                     </button>
@@ -898,13 +1001,13 @@
                             {isAuthenticated && (
                                 <div className="mb-6 p-4 bg-green-50 rounded-2xl border-2 border-green-200">
                                     <p className="text-sm text-green-800 mb-2">✅ Connecté</p>
-                                    <a href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`} target="_blank" className="text-xs text-blue-600">Ouvrir le Sheet →</a>
+                                    <a href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`} target="_blank" className="text-xs text-[#5a5981]">Ouvrir le Sheet →</a>
                                 </div>
                             )}
                             <div className="space-y-4">
                                 {users.map(user => (
-                                    <button key={user.id} onClick={() => setCurrentUser(user.id)} className={`w-full ${user.color} text-white p-6 rounded-2xl hover:opacity-90 shadow-lg flex items-center justify-center gap-3`}>
-                                        <span className="text-4xl">{user.emoji}</span>
+                                    <button key={user.id} onClick={() => setCurrentUser(user.id)} className="w-full p-6 rounded-2xl hover:opacity-90 shadow-lg flex items-center justify-center gap-3" style={{background: user.color, color: '#5a5981'}}>
+                                        <AvatarSVG shape={user.shape} color="rgba(255,255,255,0.85)" size={48} />
                                         <span className="text-2xl font-bold">{user.name}</span>
                                     </button>
                                 ))}
@@ -920,35 +1023,35 @@
             // Show loader while first cloud sync (only if authenticated)
             if (currentUser && isAuthenticated && !hasLoadedFromCloud) {
                 return (
-                    <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 flex flex-col items-center justify-center gap-4">
-                        <div className="text-5xl">{currentUserData?.emoji || '🏠'}</div>
-                        <h2 className="text-xl font-bold text-purple-800">Chargement des données...</h2>
-                        <div className="loader-spinner"></div>
+                    <div className="min-h-screen bg-[#fde2aa] flex flex-col items-center justify-center gap-4">
+                        <AvatarSVG shape={currentUserData?.shape || 'diamond'} color={currentUserData?.color || '#adbe70'} size={56} />
+                        <h2 className="text-xl font-bold text-[#5a5981]">Chargement des données...</h2>
+                        <div className="loader-dots"><span></span><span></span><span></span></div>
                     </div>
                 );
             }
 
             // ===== MAIN RENDER =====
             return (
-                <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 pb-32">
+                <div className="min-h-screen bg-[#fde2aa] pb-32">
                     {/* HEADER */}
-                    <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 shadow-xl">
+                    <div className="bg-[#cccce8] text-[#5a5981] p-4 shadow-xl">
                         <div className="flex justify-between items-center max-w-4xl mx-auto">
                             <div>
                                 <h1 className="text-xl font-bold">Plateforme Ratours</h1>
-                                <p className="text-purple-100 text-xs">{currentUserData.emoji} {currentUserData.name}</p>
+                                <p className="text-[#7f7db0] text-xs flex items-center gap-1"><AvatarSVG shape={currentUserData.shape} color={currentUserData.color} size={14} /> {currentUserData.name}</p>
                             </div>
                             <div className="flex gap-1.5">
                                 {isAuthenticated && (
-                                    <button onClick={syncFromCloud} disabled={isSyncing} className="bg-white bg-opacity-20 px-3 py-1.5 rounded-lg flex items-center gap-1 text-xs">
+                                    <button onClick={syncFromCloud} disabled={isSyncing} className="bg-[#5a5981] bg-opacity-30 px-3 py-1.5 rounded-lg flex items-center gap-1 text-xs text-[#5a5981]">
                                         <Icon name="sync" size={14} />
                                         {lastSync && <span>{lastSync.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>}
                                     </button>
                                 )}
                                 {isAuthenticated && (
-                                    <button onClick={handleGoogleLogout} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg text-xs">Déco</button>
+                                    <button onClick={handleGoogleLogout} className="bg-[#5a5981] bg-opacity-20 px-2 py-1.5 rounded-lg text-xs text-[#5a5981]">Déco</button>
                                 )}
-                                <button onClick={() => { setCurrentUser(null); setHasLoadedFromCloud(false); }} className="bg-white bg-opacity-20 px-2 py-1.5 rounded-lg">
+                                <button onClick={() => { setCurrentUser(null); setHasLoadedFromCloud(false); }} className="bg-[#5a5981] bg-opacity-20 px-2 py-1.5 rounded-lg">
                                     <Icon name="logout" size={14} />
                                 </button>
                             </div>
@@ -959,33 +1062,33 @@
                         {/* ===== DASHBOARD ===== */}
                         {activeTab === 'dashboard' && (
                             <div className="space-y-4">
-                                <div className="bg-gradient-to-r from-purple-400 to-pink-400 rounded-2xl p-5 text-white shadow-lg">
-                                    <h2 className="text-2xl font-bold mb-1">Bonjour {currentUserData.name} ! 👋</h2>
-                                    <p className="text-purple-100 text-sm capitalize">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                                <div className="bg-[#cccce8] rounded-lg p-5 shadow-lg">
+                                    <h2 className="text-2xl font-bold mb-1 text-[#5a5981]">Bonjour {currentUserData.name} ! 👋</h2>
+                                    <p className="text-[#7f7db0] text-sm capitalize">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
                                 </div>
                                 
                                 {todos.filter(t => !t.done && t.priority === 'high').length > 0 && (
-                                    <div className="bg-red-50 border-2 border-red-300 rounded-2xl shadow p-4">
+                                    <div className="bg-red-50 border-2 border-red-300 rounded-lg shadow p-4">
                                         <h3 className="font-bold text-red-700 mb-3 flex items-center gap-2 text-sm">🔴 URGENT ({todos.filter(t => !t.done && t.priority === 'high').length})</h3>
                                         {todos.filter(t => !t.done && t.priority === 'high').slice(0, 5).map(todo => (
-                                            <div key={todo.id} className="flex items-center gap-3 py-1.5 bg-white rounded-xl px-3 mb-1.5">
+                                            <div key={todo.id} className="flex items-center gap-3 py-1.5 bg-[#fefbe8] rounded-xl px-3 mb-1.5">
                                                 <input type="checkbox" className="h-5 w-5 accent-red-500" onChange={() => toggleTodo(todo.id)} />
                                                 <span className="flex-1 font-medium text-sm">{todo.title}</span>
-                                                <span className="text-xs">{users.find(u => u.id === todo.assignedTo)?.emoji || '❓'}</span>
+                                                {(() => { const u = users.find(ux => ux.id === todo.assignedTo); return u ? React.createElement(AvatarSVG, {shape: u.shape, color: u.color, size: 16}) : '❓'; })()}
                                             </div>
                                         ))}
                                     </div>
                                 )}
 
                                 {upcomingEvents.length > 0 && (
-                                    <div className="bg-white rounded-2xl shadow p-4">
-                                        <h3 className="font-bold text-gray-800 mb-3 text-sm">📅 Prochains événements</h3>
+                                    <div className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                        <h3 className="font-bold text-[#5a5981] mb-3 text-sm">📅 Prochains événements</h3>
                                         {upcomingEvents.slice(0, 4).map(event => (
                                             <div key={event.id} className="flex items-center gap-3 py-2 border-b last:border-0">
                                                 <span className="text-xl">{event.emoji}</span>
                                                 <div className="flex-1 min-w-0">
                                                     <span className="font-medium text-sm block truncate">{event.title}</span>
-                                                    <span className="text-xs text-gray-500">
+                                                    <span className="text-xs text-[#7f7db0]">
                                                         {formatDateFr(event.date)}
                                                         {event.endDate && ` → ${formatDateFr(event.endDate)}`}
                                                         {event.time && ` à ${event.time}`}
@@ -993,23 +1096,23 @@
                                                 </div>
                                             </div>
                                         ))}
-                                        {upcomingEvents.length > 4 && <button onClick={() => setActiveTab('calendar')} className="text-xs text-purple-600 mt-2">Voir tout →</button>}
+                                        {upcomingEvents.length > 4 && <button onClick={() => setActiveTab('calendar')} className="text-xs text-[#5a5981] mt-2">Voir tout →</button>}
                                     </div>
                                 )}
                                 
-                                <div className="bg-white rounded-2xl shadow p-4">
-                                    <h3 className="font-bold text-gray-800 mb-3 text-sm">✅ Mes tâches ({myTodos.length})</h3>
+                                <div className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                    <h3 className="font-bold text-[#5a5981] mb-3 text-sm">✅ Mes tâches ({myTodos.length})</h3>
                                     {myTodos.slice(0, 5).map(todo => (
                                         <div key={todo.id} className="flex items-center gap-3 py-1.5">
                                             <input type="checkbox" className="h-5 w-5" onChange={() => toggleTodo(todo.id)} />
                                             <span className="text-sm">{todo.title}</span>
                                         </div>
                                     ))}
-                                    {myTodos.length === 0 && <p className="text-sm text-gray-400">Rien pour l'instant 🎉</p>}
+                                    {myTodos.length === 0 && <p className="text-sm text-[#7f7db0]">Rien pour l'instant 🎉</p>}
                                 </div>
 
-                                <div className="bg-white rounded-2xl shadow p-4">
-                                    <h3 className="font-bold text-gray-800 mb-3 text-sm">🛒 Courses ({courses.filter(c => !c.checked).length})</h3>
+                                <div className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                    <h3 className="font-bold text-[#5a5981] mb-3 text-sm">🛒 Courses ({courses.filter(c => !c.checked).length})</h3>
                                     {courses.filter(c => !c.checked).slice(0, 6).map(course => (
                                         <div key={course.id} className="flex items-center gap-3 py-1">
                                             <input type="checkbox" className="h-4 w-4" onChange={() => toggleCourse(course.id)} />
@@ -1019,19 +1122,19 @@
                                 </div>
                                 
                                 {notes.length > 0 && (
-                                    <div className="bg-white rounded-2xl shadow p-4">
-                                        <h3 className="font-bold text-gray-800 mb-3 text-sm">📝 Dernières notes</h3>
+                                    <div className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                        <h3 className="font-bold text-[#5a5981] mb-3 text-sm">📝 Dernières notes</h3>
                                         {notes.slice(0, 3).map(note => (
                                             <div key={note.id} className="py-2 border-b last:border-0">
                                                 <div className="flex items-center gap-2 mb-0.5">
-                                                    <span className="text-sm">{users.find(u => u.id === note.author)?.emoji || '👤'}</span>
+                                                    {(() => { const u = users.find(ux => ux.id === note.author); return u ? React.createElement(AvatarSVG, {shape: u.shape, color: u.color, size: 20}) : '👤'; })()}
                                                     <span className="text-xs font-semibold">{users.find(u => u.id === note.author)?.name}</span>
-                                                    <span className="text-xs text-gray-400">{formatDateFr(note.date)}</span>
+                                                    <span className="text-xs text-[#7f7db0]">{formatDateFr(note.date)}</span>
                                                 </div>
-                                                <p className="text-sm text-gray-600 line-clamp-2">{note.text}</p>
+                                                <p className="text-sm text-[#5a5981] line-clamp-2">{note.text}</p>
                                             </div>
                                         ))}
-                                        {notes.length > 3 && <button onClick={() => setActiveTab('notes')} className="text-xs text-purple-600 mt-2">Voir toutes →</button>}
+                                        {notes.length > 3 && <button onClick={() => setActiveTab('notes')} className="text-xs text-[#5a5981] mt-2">Voir toutes →</button>}
                                     </div>
                                 )}
                             </div>
@@ -1042,19 +1145,19 @@
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-2xl font-bold">📅 Agenda</h2>
-                                    {calendarEnabled && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">📅 Cal.</span>}
+                                    {calendarEnabled && <span className="text-xs bg-[#e8e8f4] text-[#5a5981] px-2 py-1 rounded-full">📅 Cal.</span>}
                                 </div>
                                 {sortedEvents.map(event => {
                                     const isPeriod = !!event.endDate;
                                     const dayCount = isPeriod ? Math.ceil((new Date(event.endDate + 'T12:00:00') - new Date(event.date + 'T12:00:00')) / 86400000) + 1 : 0;
                                     return (
-                                        <div key={event.id} className={`bg-white rounded-2xl shadow p-4 flex items-start gap-3 ${isPeriod ? 'border-l-4 border-purple-400' : ''}`}>
+                                        <div key={event.id} className={`bg-[#fefbe8] rounded-lg shadow p-4 flex items-start gap-3 ${isPeriod ? 'border-l-4 border-[#cccce8]' : ''}`}>
                                             <span className="text-2xl mt-0.5">{event.emoji}</span>
                                             <div className="flex-1 min-w-0">
-                                                <h3 className="font-bold text-gray-800 text-sm">{event.title}</h3>
-                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                <h3 className="font-bold text-[#5a5981] text-sm">{event.title}</h3>
+                                                <p className="text-xs text-[#7f7db0] mt-0.5">
                                                     {isPeriod ? (
-                                                        <span>{formatDateFr(event.date)} → {formatDateFr(event.endDate)} <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full ml-1 text-xs">{dayCount}j</span></span>
+                                                        <span>{formatDateFr(event.date)} → {formatDateFr(event.endDate)} <span className="bg-[#e8e8f4] text-[#5a5981] px-1.5 py-0.5 rounded-full ml-1 text-xs">{dayCount}j</span></span>
                                                     ) : (
                                                         <span>{formatDateFr(event.date)}{event.time && ` à ${event.time}`}</span>
                                                     )}
@@ -1062,7 +1165,7 @@
                                                 {event.assignedTo?.length > 0 && (
                                                     <div className="flex gap-1 mt-1">{event.assignedTo.map(uid => {
                                                         const u = allPeople.find(p => p.id === uid);
-                                                        return u ? <span key={uid} className="text-xs bg-gray-100 px-1.5 py-0.5 rounded-full">{u.emoji} {u.name}</span> : null;
+                                                        return u ? React.createElement('span', {key: uid, className: "text-xs bg-[#e8e8f4] px-1.5 py-0.5 rounded-full flex items-center gap-1"}, React.createElement(AvatarSVG, {shape: u.shape || 'circle', color: u.color || '#cccce8', size: 12}), ' ', u.name) : null;
                                                     })}</div>
                                                 )}
                                             </div>
@@ -1073,7 +1176,7 @@
                                         </div>
                                     );
                                 })}
-                                {events.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucun événement — ajoutez-en via le bouton +</div>}
+                                {events.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-[#7f7db0] text-sm">Aucun événement — ajoutez-en via le bouton +</div>}
                             </div>
                         )}
 
@@ -1082,7 +1185,7 @@
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-2xl font-bold">✅ Tâches</h2>
-                                    <button onClick={() => setHideDoneTodos(!hideDoneTodos)} className={`text-xs px-3 py-1.5 rounded-full ${hideDoneTodos ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    <button onClick={() => setHideDoneTodos(!hideDoneTodos)} className={`text-xs px-3 py-1.5 rounded-full ${hideDoneTodos ? 'bg-[#e8e8f4] text-[#5a5981]' : 'bg-gray-100 text-[#7f7db0]'}`}>
                                         {hideDoneTodos ? '👁️ Voir terminées' : '🙈 Masquer faites'}
                                     </button>
                                 </div>
@@ -1090,13 +1193,13 @@
                                 {(() => {
                                     const unassigned = todos.filter(t => !t.assignedTo && (!hideDoneTodos || !t.done));
                                     return unassigned.length > 0 ? (
-                                        <div className="bg-white rounded-2xl shadow p-4 border-2 border-yellow-300">
-                                            <h3 className="font-bold text-gray-700 mb-2 text-sm">❓ Non assignées ({unassigned.length})</h3>
+                                        <div className="bg-[#fefbe8] rounded-lg shadow p-4 border-2 border-yellow-300">
+                                            <h3 className="font-bold text-[#5a5981] mb-2 text-sm">❓ Non assignées ({unassigned.length})</h3>
                                             {unassigned.map(todo => (
                                                 <div key={todo.id} className="flex items-center justify-between py-2 border-b last:border-0">
                                                     <div className="flex items-center gap-3 flex-1">
                                                         <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
-                                                        <span className={`text-sm ${todo.done ? 'line-through text-gray-400' : ''}`}>{todo.title}</span>
+                                                        <span className={`text-sm ${todo.done ? 'line-through text-[#7f7db0]' : ''}`}>{todo.title}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
                                                         {todo.priority === 'high' && <span className="text-xs">🔴</span>}
@@ -1113,18 +1216,18 @@
                                     const catTodos = todos.filter(t => t.category === cat.id && t.assignedTo && (!hideDoneTodos || !t.done));
                                     if (catTodos.length === 0) return null;
                                     return (
-                                        <div key={cat.id} className="bg-white rounded-2xl shadow p-4">
-                                            <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm">{cat.emoji} {cat.name}</h3>
+                                        <div key={cat.id} className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                            <h3 className="font-bold text-[#5a5981] mb-2 flex items-center gap-2 text-sm">{cat.emoji} {cat.name}</h3>
                                             {catTodos.map(todo => (
                                                 <div key={todo.id} className="flex items-center justify-between py-2 border-b last:border-0">
                                                     <div className="flex items-center gap-3 flex-1">
                                                         <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
-                                                        <span className={`text-sm ${todo.done ? 'line-through text-gray-400' : ''}`}>{todo.title}</span>
+                                                        <span className={`text-sm ${todo.done ? 'line-through text-[#7f7db0]' : ''}`}>{todo.title}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
                                                         {todo.priority === 'high' && <span className="text-xs">🔴</span>}
                                                         {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
-                                                        <span className="text-xs">{users.find(u => u.id === todo.assignedTo)?.emoji}</span>
+                                                        {(() => { const u = users.find(u => u.id === todo.assignedTo); return u ? React.createElement(AvatarSVG, {shape: u.shape, color: u.color, size: 16}) : null; })()}
                                                         <button onClick={() => deleteTodo(todo.id)} className="text-red-400 ml-1"><Icon name="x" size={14} /></button>
                                                     </div>
                                                 </div>
@@ -1138,18 +1241,18 @@
                                     const knownCatIds = categories.todos.map(c => c.id);
                                     const orphans = todos.filter(t => t.assignedTo && !knownCatIds.includes(t.category) && (!hideDoneTodos || !t.done));
                                     return orphans.length > 0 ? (
-                                        <div className="bg-white rounded-2xl shadow p-4">
-                                            <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm">📋 Autres</h3>
+                                        <div className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                            <h3 className="font-bold text-[#5a5981] mb-2 flex items-center gap-2 text-sm">📋 Autres</h3>
                                             {orphans.map(todo => (
                                                 <div key={todo.id} className="flex items-center justify-between py-2 border-b last:border-0">
                                                     <div className="flex items-center gap-3 flex-1">
                                                         <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} className="h-5 w-5" />
-                                                        <span className={`text-sm ${todo.done ? 'line-through text-gray-400' : ''}`}>{todo.title}</span>
+                                                        <span className={`text-sm ${todo.done ? 'line-through text-[#7f7db0]' : ''}`}>{todo.title}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
                                                         {todo.priority === 'high' && <span className="text-xs">🔴</span>}
                                                         {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
-                                                        <span className="text-xs">{users.find(u => u.id === todo.assignedTo)?.emoji}</span>
+                                                        {(() => { const u = users.find(u => u.id === todo.assignedTo); return u ? React.createElement(AvatarSVG, {shape: u.shape, color: u.color, size: 16}) : null; })()}
                                                         <button onClick={() => deleteTodo(todo.id)} className="text-red-400 ml-1"><Icon name="x" size={14} /></button>
                                                     </div>
                                                 </div>
@@ -1158,7 +1261,7 @@
                                     ) : null;
                                 })()}
 
-                                {todos.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucune tâche — ajoutez-en via le bouton +</div>}
+                                {todos.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-[#7f7db0] text-sm">Aucune tâche — ajoutez-en via le bouton +</div>}
                             </div>
                         )}
 
@@ -1178,15 +1281,15 @@
                                     if (catCourses.length === 0) return null;
                                     const unchecked = catCourses.filter(c => !c.checked).length;
                                     return (
-                                        <div key={cat.id} className="bg-white rounded-2xl shadow p-4">
-                                            <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2 text-sm">
-                                                {cat.emoji} {cat.name} <span className="text-xs text-gray-400 font-normal">({unchecked})</span>
+                                        <div key={cat.id} className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                            <h3 className="font-bold text-[#5a5981] mb-2 flex items-center gap-2 text-sm">
+                                                {cat.emoji} {cat.name} <span className="text-xs text-[#7f7db0] font-normal">({unchecked})</span>
                                             </h3>
                                             {catCourses.map(course => (
                                                 <div key={course.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
                                                     <div className="flex items-center gap-3 flex-1">
                                                         <input type="checkbox" checked={course.checked} onChange={() => toggleCourse(course.id)} className="h-5 w-5" />
-                                                        <span className={`text-sm ${course.checked ? 'line-through text-gray-400' : ''}`}>{course.item}</span>
+                                                        <span className={`text-sm ${course.checked ? 'line-through text-[#7f7db0]' : ''}`}>{course.item}</span>
                                                     </div>
                                                     <button onClick={() => deleteCourse(course.id)} className="text-red-400"><Icon name="x" size={14} /></button>
                                                 </div>
@@ -1194,7 +1297,7 @@
                                         </div>
                                     );
                                 })}
-                                {courses.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucune course — ajoutez-en via le bouton +</div>}
+                                {courses.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-[#7f7db0] text-sm">Aucune course — ajoutez-en via le bouton +</div>}
                             </div>
                         )}
 
@@ -1206,8 +1309,8 @@
                                     const dayMenus = menus.filter(m => m.day === day);
                                     if (dayMenus.length === 0) return null;
                                     return (
-                                        <div key={day} className="bg-white rounded-2xl shadow p-4">
-                                            <h3 className="font-bold text-gray-700 mb-2 text-sm">{day}</h3>
+                                        <div key={day} className="bg-[#fefbe8] rounded-lg shadow p-4">
+                                            <h3 className="font-bold text-[#5a5981] mb-2 text-sm">{day}</h3>
                                             {dayMenus.map(m => (
                                                 <div key={m.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
                                                     <div className="flex items-center gap-2">
@@ -1220,7 +1323,7 @@
                                         </div>
                                     );
                                 })}
-                                {menus.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucun menu planifié</div>}
+                                {menus.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-[#7f7db0] text-sm">Aucun menu planifié</div>}
                             </div>
                         )}
 
@@ -1228,7 +1331,7 @@
                         {activeTab === 'stats' && (
                             <div className="space-y-4">
                                 <h2 className="text-2xl font-bold">📊 Statistiques</h2>
-                                <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-5 border-2 border-purple-200">
+                                <div className="bg-[#e8e8f4] rounded-lg p-5 border-2 border-[#e8e8f4]">
                                     <h3 className="text-lg font-bold mb-3">⚖️ Équilibre parental</h3>
                                     {stats.isBalanced && stats.totalTasks > 0 && (
                                         <div className="bg-green-100 border border-green-300 rounded-xl p-2 mb-3">
@@ -1236,20 +1339,20 @@
                                         </div>
                                     )}
                                     <div className="flex justify-between mb-2 text-sm">
-                                        <span className="font-semibold text-pink-600">{users[0].emoji} {users[0].name}: {stats.parent1.share}%</span>
-                                        <span className="font-semibold text-blue-600">{users[1].emoji} {users[1].name}: {stats.parent2.share}%</span>
+                                        <span className="font-semibold text-[#adbe70]">{React.createElement(AvatarSVG, {shape: users[0].shape, color: users[0].color, size: 16})} {users[0].name}: {stats.parent1.share}%</span>
+                                        <span className="font-semibold text-[#5a5981]">{React.createElement(AvatarSVG, {shape: users[1].shape, color: users[1].color, size: 16})} {users[1].name}: {stats.parent2.share}%</span>
                                     </div>
                                     <div className="w-full h-10 bg-gray-200 rounded-full overflow-hidden flex">
                                         <div className="h-full flex" style={{ width: `${stats.parent1.share}%` }}>
-                                            <div className="bg-pink-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.done / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.done > 0 && `✓${stats.parent1.done}`}</div>
-                                            <div className="bg-pink-200 flex items-center justify-center text-pink-700 text-xs" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.todo / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.todo > 0 && stats.parent1.todo}</div>
+                                            <div className="bg-[#adbe70] flex items-center justify-center text-white text-xs font-bold" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.done / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.done > 0 && `✓${stats.parent1.done}`}</div>
+                                            <div className="bg-[#d4e0a8] flex items-center justify-center text-[#8a9d5a] text-xs" style={{ width: stats.parent1.total > 0 ? `${(stats.parent1.todo / stats.parent1.total) * 100}%` : '0%' }}>{stats.parent1.todo > 0 && stats.parent1.todo}</div>
                                         </div>
                                         <div className="h-full flex" style={{ width: `${stats.parent2.share}%` }}>
-                                            <div className="bg-blue-200 flex items-center justify-center text-blue-700 text-xs" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.todo / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.todo > 0 && stats.parent2.todo}</div>
-                                            <div className="bg-blue-500 flex items-center justify-center text-white text-xs font-bold" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.done / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.done > 0 && `✓${stats.parent2.done}`}</div>
+                                            <div className="bg-[#e8e8f4] flex items-center justify-center text-[#5a5981] text-xs" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.todo / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.todo > 0 && stats.parent2.todo}</div>
+                                            <div className="bg-[#f0eff8]0 flex items-center justify-center text-white text-xs font-bold" style={{ width: stats.parent2.total > 0 ? `${(stats.parent2.done / stats.parent2.total) * 100}%` : '0%' }}>{stats.parent2.done > 0 && `✓${stats.parent2.done}`}</div>
                                         </div>
                                     </div>
-                                    <p className="text-center mt-3 bg-white rounded-xl p-2 text-sm font-medium">{stats.totalDone} / {stats.totalTasks} tâches accomplies</p>
+                                    <p className="text-center mt-3 bg-[#fefbe8] rounded-xl p-2 text-sm font-medium">{stats.totalDone} / {stats.totalTasks} tâches accomplies</p>
                                 </div>
                             </div>
                         )}
@@ -1260,28 +1363,28 @@
                                 <div className="flex items-center justify-between">
                                     <h2 className="text-2xl font-bold">👶 Garde</h2>
                                     <div className="flex gap-1.5">
-                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)} className="bg-purple-100 px-2.5 py-1.5 rounded-lg text-xs font-medium">←</button>
-                                        <button onClick={() => setCurrentWeekOffset(0)} className="bg-purple-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium">Auj.</button>
-                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)} className="bg-purple-100 px-2.5 py-1.5 rounded-lg text-xs font-medium">→</button>
+                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)} className="bg-[#e8e8f4] px-2.5 py-1.5 rounded-lg text-xs font-medium">←</button>
+                                        <button onClick={() => setCurrentWeekOffset(0)} className="bg-[#cccce8] text-white px-2.5 py-1.5 rounded-lg text-xs font-medium">Auj.</button>
+                                        <button onClick={() => setCurrentWeekOffset(currentWeekOffset + 1)} className="bg-[#e8e8f4] px-2.5 py-1.5 rounded-lg text-xs font-medium">→</button>
                                     </div>
                                 </div>
                                 {guardWeek.map(day => (
-                                    <div key={day.date} className={`bg-white rounded-2xl shadow p-4 ${day.isToday ? 'ring-2 ring-purple-500' : ''}`}>
+                                    <div key={day.date} className={`bg-[#fefbe8] rounded-lg shadow p-4 ${day.isToday ? 'ring-2 ring-[#cccce8]' : ''}`}>
                                         <h3 className="font-bold text-sm mb-2">
                                             {day.dayName} {day.displayDate}
-                                            {day.isToday && <span className="ml-2 text-xs bg-purple-500 text-white px-2 py-0.5 rounded-full">Auj.</span>}
+                                            {day.isToday && <span className="ml-2 text-xs bg-[#cccce8] text-white px-2 py-0.5 rounded-full">Auj.</span>}
                                         </h3>
                                         <div className="grid grid-cols-2 gap-2 mb-2">
                                             <div className="bg-amber-50 rounded-xl p-2.5">
                                                 <p className="text-xs text-amber-700 mb-1 font-medium">☀️ Matin</p>
-                                                <select value={day.morning || ''} onChange={(e) => updateGuardSlot(day.date, 'morning', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-xs">
+                                                <select value={day.morning || ''} onChange={(e) => updateGuardSlot(day.date, 'morning', parseInt(e.target.value))} className="w-full bg-[#fefbe8] border border-[#e8e8f4] rounded-lg px-2 py-1 text-xs">
                                                     <option value="">—</option>
                                                     {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
                                                 </select>
                                             </div>
                                             <div className="bg-indigo-50 rounded-xl p-2.5">
                                                 <p className="text-xs text-indigo-700 mb-1 font-medium">🌙 Après-midi</p>
-                                                <select value={day.afternoon || ''} onChange={(e) => updateGuardSlot(day.date, 'afternoon', parseInt(e.target.value))} className="w-full bg-white border rounded-lg px-2 py-1 text-xs">
+                                                <select value={day.afternoon || ''} onChange={(e) => updateGuardSlot(day.date, 'afternoon', parseInt(e.target.value))} className="w-full bg-[#fefbe8] border border-[#e8e8f4] rounded-lg px-2 py-1 text-xs">
                                                     <option value="">—</option>
                                                     {allPeople.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
                                                 </select>
@@ -1297,7 +1400,7 @@
                         {activeTab === 'notes' && (
                             <div className="space-y-3">
                                 <h2 className="text-2xl font-bold">📝 Notes</h2>
-                                <div className="bg-white rounded-2xl shadow p-4">
+                                <div className="bg-[#fefbe8] rounded-lg shadow p-4">
                                     <textarea
                                         placeholder="Écrivez une note (max 300 car.)..."
                                         maxLength="300" rows="2"
@@ -1307,27 +1410,27 @@
                                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote(); } }}
                                     />
                                     <div className="flex justify-between items-center mt-2">
-                                        <span className="text-xs text-gray-400">{noteText.length}/300</span>
-                                        <button onClick={addNote} disabled={!noteText.trim()} className={`px-4 py-1.5 rounded-lg text-xs font-medium ${noteText.trim() ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                                        <span className="text-xs text-[#7f7db0]">{noteText.length}/300</span>
+                                        <button onClick={addNote} disabled={!noteText.trim()} className={`px-4 py-1.5 rounded-lg text-xs font-medium ${noteText.trim() ? 'bg-[#cccce8] text-white' : 'bg-gray-100 text-[#7f7db0]'}`}>
                                             Envoyer
                                         </button>
                                     </div>
                                 </div>
                                 <div className="space-y-2">
                                     {notes.map(note => (
-                                        <div key={note.id} className="bg-white rounded-2xl shadow p-4">
+                                        <div key={note.id} className="bg-[#fefbe8] rounded-lg shadow p-4">
                                             <div className="flex justify-between items-start mb-1">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-lg">{users.find(u => u.id === note.author)?.emoji || '👤'}</span>
+                                                    {(() => { const u = users.find(ux => ux.id === note.author); return u ? React.createElement(AvatarSVG, {shape: u.shape, color: u.color, size: 24}) : '👤'; })()}
                                                     <span className="text-sm font-semibold">{users.find(u => u.id === note.author)?.name || 'Inconnu'}</span>
-                                                    <span className="text-xs text-gray-400">{formatDateFr(note.date)}</span>
+                                                    <span className="text-xs text-[#7f7db0]">{formatDateFr(note.date)}</span>
                                                 </div>
                                                 <button onClick={() => deleteNote(note.id)} className="text-red-400"><Icon name="x" size={14} /></button>
                                             </div>
-                                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{note.text}</p>
+                                            <p className="text-sm text-[#5a5981] whitespace-pre-wrap">{note.text}</p>
                                         </div>
                                     ))}
-                                    {notes.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-gray-400 text-sm">Aucune note</div>}
+                                    {notes.length === 0 && <div className="bg-gray-50 rounded-2xl p-8 text-center text-[#7f7db0] text-sm">Aucune note</div>}
                                 </div>
                             </div>
                         )}
@@ -1342,19 +1445,19 @@
                                     { key: 'links', title: '🔗 Liens', type: 'link' },
                                     { key: 'notes', title: '📝 Notes', type: 'text' },
                                 ].map(section => (
-                                    <div key={section.key} className="bg-white rounded-2xl shadow p-4">
+                                    <div key={section.key} className="bg-[#fefbe8] rounded-lg shadow p-4">
                                         <div className="flex justify-between items-center mb-2">
                                             <h3 className="font-bold text-sm">{section.title}</h3>
-                                            <button onClick={() => { setEditingInfo({ section: section.key, type: section.type }); setInfoLabel(''); setInfoValue(''); }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
+                                            <button onClick={() => { setEditingInfo({ section: section.key, type: section.type }); setInfoLabel(''); setInfoValue(''); }} className="bg-[#e8e8f4] text-[#5a5981] px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                         </div>
                                         {familyInfo[section.key].map(item => (
                                             <div key={item.id} className="py-2 border-b last:border-0 flex justify-between items-center">
                                                 <div className="flex-1 min-w-0">
-                                                    <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                                                    <span className="text-sm font-medium text-[#5a5981]">{item.label}</span>
                                                     {section.type === 'link' ? (
-                                                        <a href={item.value} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline block truncate">{item.value}</a>
+                                                        <a href={item.value} target="_blank" rel="noopener noreferrer" className="text-xs text-[#5a5981] hover:underline block truncate">{item.value}</a>
                                                     ) : (
-                                                        <span className="text-xs text-gray-500 block">{item.value}</span>
+                                                        <span className="text-xs text-[#7f7db0] block">{item.value}</span>
                                                     )}
                                                 </div>
                                                 <button onClick={() => deleteFamilyInfo(section.key, item.id)} className="text-red-400 ml-2"><Icon name="trash" size={14} /></button>
@@ -1364,13 +1467,13 @@
                                 ))}
                                 {editingInfo && (
                                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditingInfo(null); }}>
-                                        <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
+                                        <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
                                             <h3 className="text-lg font-bold mb-3">Ajouter une info</h3>
                                             <input type="text" placeholder="Label" value={infoLabel} onChange={(e) => setInfoLabel(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
                                             <input type={editingInfo.type === 'link' ? 'url' : 'text'} placeholder={editingInfo.type === 'phone' ? 'Téléphone' : editingInfo.type === 'link' ? 'URL' : 'Texte'} value={infoValue} onChange={(e) => setInfoValue(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-4 text-sm" />
                                             <div className="flex gap-3">
                                                 <button onClick={() => setEditingInfo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
-                                                <button onClick={() => { if (infoLabel && infoValue) { addFamilyInfo(editingInfo.section, { label: infoLabel, value: infoValue, type: editingInfo.type }); setEditingInfo(null); } }} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl text-sm font-medium">Ajouter</button>
+                                                <button onClick={() => { if (infoLabel && infoValue) { addFamilyInfo(editingInfo.section, { label: infoLabel, value: infoValue, type: editingInfo.type }); setEditingInfo(null); } }} className="flex-1 bg-[#cccce8] text-[#5a5981] font-bold py-3 rounded-xl text-sm font-medium">Ajouter</button>
                                             </div>
                                         </div>
                                     </div>
@@ -1384,26 +1487,27 @@
                                 <h2 className="text-2xl font-bold">⚙️ Réglages</h2>
                                 
                                 {/* Google Calendar */}
-                                <div className="bg-white rounded-2xl shadow p-4">
+                                <div className="bg-[#fefbe8] rounded-lg shadow p-4">
                                     <h3 className="font-bold text-sm flex items-center gap-2 mb-3">📅 Google Calendar</h3>
-                                    <p className="text-xs text-gray-500 mb-3">Synchronise les événements avec un calendrier dédié "Ratours TEST"</p>
+                                    <p className="text-xs text-[#7f7db0] mb-3">Sélectionne un calendrier existant pour synchroniser les événements</p>
                                     {!calendarEnabled ? (
-                                        <button onClick={enableCalendar} className="w-full bg-blue-500 text-white py-2.5 rounded-xl text-sm font-medium">📅 Activer Google Calendar</button>
+                                        <button onClick={enableCalendar} className="w-full bg-[#cccce8] text-[#5a5981] py-2.5 rounded-xl text-sm font-medium">📅 Choisir un calendrier</button>
                                     ) : (
                                         <div className="space-y-2">
-                                            <div className="flex items-center gap-2 bg-green-50 rounded-xl p-2.5"><span>✅</span><span className="text-green-800 text-xs font-medium">Calendar activé</span></div>
-                                            <button onClick={syncEventsToCalendar} className="w-full bg-blue-50 text-blue-700 py-2 rounded-xl text-xs font-medium">🔄 Synchroniser les événements existants</button>
-                                            <button onClick={disableCalendar} className="w-full bg-gray-100 text-gray-500 py-1.5 rounded-xl text-xs">Désactiver</button>
+                                            <div className="flex items-center gap-2 bg-green-50 rounded-xl p-2.5"><span>✅</span><span className="text-green-800 text-xs font-medium">Calendrier connecté</span></div>
+                                            <button onClick={syncEventsToCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">🔄 Synchroniser les événements existants</button>
+                                            <button onClick={enableCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-1.5 rounded-xl text-xs font-medium">🔀 Changer de calendrier</button>
+                                            <button onClick={disableCalendar} className="w-full bg-gray-100 text-[#7f7db0] py-1.5 rounded-xl text-xs">Désactiver</button>
                                         </div>
                                     )}
-                                    {calendarStatus && <p className="text-xs text-gray-600 mt-2 text-center">{calendarStatus}</p>}
+                                    {calendarStatus && <p className="text-xs text-[#5a5981] mt-2 text-center">{calendarStatus}</p>}
                                 </div>
 
                                 {/* Personnes externes */}
-                                <div className="bg-white rounded-2xl shadow p-4">
+                                <div className="bg-[#fefbe8] rounded-lg shadow p-4">
                                     <div className="flex justify-between items-center mb-2">
                                         <h3 className="font-bold text-sm">👥 Personnes externes</h3>
-                                        <button onClick={() => { setAddPersonModal(true); setNewPersonName(''); setNewPersonEmoji(''); }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
+                                        <button onClick={() => { setAddPersonModal(true); setNewPersonName(''); setNewPersonEmoji(''); }} className="bg-[#e8e8f4] text-[#5a5981] px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                     </div>
                                     {externalPeople.map(person => (
                                         <div key={person.id} className="py-2 border-b last:border-0 flex justify-between items-center">
@@ -1419,10 +1523,10 @@
                                     { section: 'todos', title: '✅ Catégories Tâches' },
                                     { section: 'events', title: '📅 Catégories Événements' },
                                 ].map(({ section, title }) => (
-                                    <div key={section} className="bg-white rounded-2xl shadow p-4">
+                                    <div key={section} className="bg-[#fefbe8] rounded-lg shadow p-4">
                                         <div className="flex justify-between items-center mb-2">
                                             <h3 className="font-bold text-sm">{title}</h3>
-                                            <button onClick={() => { setAddCategoryModal({ section }); setNewCatName(''); setNewCatEmoji(''); }} className="bg-purple-100 text-purple-600 px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
+                                            <button onClick={() => { setAddCategoryModal({ section }); setNewCatName(''); setNewCatEmoji(''); }} className="bg-[#e8e8f4] text-[#5a5981] px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                         </div>
                                         {categories[section].map(cat => (
                                             <div key={cat.id} className="py-2 border-b last:border-0 flex justify-between items-center">
@@ -1437,25 +1541,25 @@
                     </div>
 
                     {/* ===== FAB ===== */}
-                    <button onClick={() => setShowAddModal(true)} className="fixed bottom-28 right-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full p-3.5 shadow-2xl hover:scale-110 transition-transform z-40">
+                    <button onClick={() => setShowAddModal(true)} className="fixed bottom-28 right-4 bg-[#cccce8] text-[#5a5981] font-bold rounded-full p-3.5 shadow-2xl hover:scale-110 transition-transform z-40">
                         <Icon name="plus" size={24} />
                     </button>
 
                     {/* ===== ADD ITEM MODAL (bottom-sheet on mobile) ===== */}
                     {showAddModal && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) { setShowAddModal(false); setAddType(''); resetNewItem(); } }}>
-                            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
+                            <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="text-lg font-bold">Ajouter</h3>
-                                    <button onClick={() => { setShowAddModal(false); setAddType(''); resetNewItem(); }} className="text-gray-400"><Icon name="x" size={22} /></button>
+                                    <button onClick={() => { setShowAddModal(false); setAddType(''); resetNewItem(); }} className="text-[#7f7db0]"><Icon name="x" size={22} /></button>
                                 </div>
                                 {!addType ? (
                                     <div className="space-y-2">
                                         {[
-                                            { type: 'event', label: 'Événement', emoji: '📅', bg: 'bg-blue-50 hover:bg-blue-100' },
+                                            { type: 'event', label: 'Événement', emoji: '📅', bg: 'bg-[#f0eff8] hover:bg-[#e8e8f4]' },
                                             { type: 'todo', label: 'Tâche', emoji: '✅', bg: 'bg-green-50 hover:bg-green-100' },
                                             { type: 'course', label: 'Course', emoji: '🛒', bg: 'bg-orange-50 hover:bg-orange-100' },
-                                            { type: 'menu', label: 'Menu', emoji: '🍽️', bg: 'bg-purple-50 hover:bg-purple-100' },
+                                            { type: 'menu', label: 'Menu', emoji: '🍽️', bg: 'bg-[#f0eff8] hover:bg-[#e8e8f4]' },
                                         ].map(opt => (
                                             <button key={opt.type} onClick={() => setAddType(opt.type)} className={`w-full ${opt.bg} p-4 rounded-2xl text-left flex items-center gap-3`}>
                                                 <span className="text-2xl">{opt.emoji}</span><span className="font-semibold">{opt.label}</span>
@@ -1477,17 +1581,17 @@
                                             <>
                                                 {/* Period toggle */}
                                                 <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
-                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: false, endDate: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${!newItem.isPeriod ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>📍 Ponctuel</button>
-                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: true, time: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${newItem.isPeriod ? 'bg-white shadow text-purple-700' : 'text-gray-500'}`}>📅 Période</button>
+                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: false, endDate: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${!newItem.isPeriod ? 'bg-[#fefbe8] shadow text-[#5a5981]' : 'text-[#7f7db0]'}`}>📍 Ponctuel</button>
+                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: true, time: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${newItem.isPeriod ? 'bg-[#fefbe8] shadow text-[#5a5981]' : 'text-[#7f7db0]'}`}>📅 Période</button>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <div className="flex-1">
-                                                        <label className="text-xs text-gray-500 mb-1 block">{newItem.isPeriod ? 'Début' : 'Date'}</label>
+                                                        <label className="text-xs text-[#7f7db0] mb-1 block">{newItem.isPeriod ? 'Début' : 'Date'}</label>
                                                         <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-3 py-2.5 border-2 rounded-xl text-sm" />
                                                     </div>
                                                     {newItem.isPeriod && (
                                                         <div className="flex-1">
-                                                            <label className="text-xs text-gray-500 mb-1 block">Fin</label>
+                                                            <label className="text-xs text-[#7f7db0] mb-1 block">Fin</label>
                                                             <input type="date" value={newItem.endDate} min={newItem.date} onChange={(e) => setNewItem({ ...newItem, endDate: e.target.value })} className="w-full px-3 py-2.5 border-2 rounded-xl text-sm" />
                                                         </div>
                                                     )}
@@ -1528,7 +1632,7 @@
                                         
                                         <div className="flex gap-3 mt-2">
                                             <button onClick={() => { setAddType(''); resetNewItem(); }} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Retour</button>
-                                            <button onClick={handleAdd} className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-xl text-sm font-medium">Ajouter</button>
+                                            <button onClick={handleAdd} className="flex-1 bg-[#cccce8] text-[#5a5981] font-bold py-3 rounded-xl text-sm font-medium">Ajouter</button>
                                         </div>
                                     </div>
                                 )}
@@ -1539,26 +1643,26 @@
                     {/* ===== CATEGORY MODAL (emoji picker) ===== */}
                     {addCategoryModal && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); } }}>
-                            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
+                            <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
                                 <div className="flex justify-between items-center mb-3">
                                     <h3 className="text-lg font-bold">Nouvelle catégorie</h3>
-                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="text-gray-400"><Icon name="x" size={20} /></button>
+                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="text-[#7f7db0]"><Icon name="x" size={20} /></button>
                                 </div>
                                 <input type="text" placeholder="Nom de la catégorie" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
-                                <p className="text-xs text-gray-500 mb-2">Choisir un emoji :</p>
+                                <p className="text-xs text-[#7f7db0] mb-2">Choisir un emoji :</p>
                                 <div className="grid grid-cols-8 gap-1.5 mb-3 max-h-36 overflow-y-auto p-1">
                                     {EMOJI_PICKER.map(em => (
-                                        <button key={em} onClick={() => setNewCatEmoji(em)} className={`text-xl p-1.5 rounded-lg hover:bg-purple-50 transition-all ${newCatEmoji === em ? 'bg-purple-100 ring-2 ring-purple-400 scale-110' : ''}`}>{em}</button>
+                                        <button key={em} onClick={() => setNewCatEmoji(em)} className={`text-xl p-1.5 rounded-lg hover:bg-[#f0eff8] transition-all ${newCatEmoji === em ? 'bg-[#e8e8f4] ring-2 ring-[#cccce8] scale-110' : ''}`}>{em}</button>
                                     ))}
                                 </div>
                                 {newCatEmoji && newCatName.trim() && (
-                                    <div className="flex items-center gap-2 bg-purple-50 rounded-xl p-3 mb-3">
+                                    <div className="flex items-center gap-2 bg-[#f0eff8] rounded-xl p-3 mb-3">
                                         <span className="text-xl">{newCatEmoji}</span><span className="font-medium text-sm">{newCatName}</span>
                                     </div>
                                 )}
                                 <div className="flex gap-3">
                                     <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
-                                    <button onClick={handleAddCategory} disabled={!newCatName.trim() || !newCatEmoji} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${newCatName.trim() && newCatEmoji ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>Ajouter</button>
+                                    <button onClick={handleAddCategory} disabled={!newCatName.trim() || !newCatEmoji} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${newCatName.trim() && newCatEmoji ? 'bg-[#cccce8] text-[#5a5981] font-bold' : 'bg-gray-200 text-[#7f7db0]'}`}>Ajouter</button>
                                 </div>
                             </div>
                         </div>
@@ -1567,12 +1671,12 @@
                     {/* ===== ASSIGN PICKER (replaces prompt) ===== */}
                     {assignPickerTodo && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-                            <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-5 max-h-[80vh] overflow-y-auto">
+                            <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-sm w-full p-5 max-h-[80vh] overflow-y-auto">
                                 <h3 className="text-lg font-bold mb-3">Qui a fait cette tâche ?</h3>
                                 <div className="space-y-2">
                                     {users.map(u => (
                                         <button key={u.id} onClick={() => confirmAssignTodo(assignPickerTodo, u.id)} className={`w-full ${u.color} text-white p-4 rounded-2xl flex items-center justify-center gap-3 hover:opacity-90`}>
-                                            <span className="text-2xl">{u.emoji}</span><span className="font-bold">{u.name}</span>
+                                            {React.createElement(AvatarSVG, {shape: u.shape, color: 'rgba(255,255,255,0.85)', size: 32})}<span className="font-bold">{u.name}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -1584,20 +1688,20 @@
                     {/* ===== ADD EXTERNAL PERSON MODAL ===== */}
                     {addPersonModal && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) setAddPersonModal(false); }}>
-                            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
+                            <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
                                 <div className="flex justify-between items-center mb-3">
                                     <h3 className="text-lg font-bold">Ajouter une personne</h3>
-                                    <button onClick={() => setAddPersonModal(false)} className="text-gray-400"><Icon name="x" size={20} /></button>
+                                    <button onClick={() => setAddPersonModal(false)} className="text-[#7f7db0]"><Icon name="x" size={20} /></button>
                                 </div>
                                 <input type="text" placeholder="Nom" value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
-                                <p className="text-xs text-gray-500 mb-2">Choisir un emoji :</p>
+                                <p className="text-xs text-[#7f7db0] mb-2">Choisir un emoji :</p>
                                 <div className="grid grid-cols-8 gap-1.5 mb-3 max-h-36 overflow-y-auto p-1">
                                     {['👵','👴','🧑‍🍼','👩‍🏫','👨‍⚕️','👩‍⚕️','🧑','👧','👦','🧓','👩‍🦰','👨‍🦱','🧑‍🤝‍🧑','👫','🧒','👶'].map(em => (
-                                        <button key={em} onClick={() => setNewPersonEmoji(em)} className={`text-xl p-1.5 rounded-lg hover:bg-purple-50 transition-all ${newPersonEmoji === em ? 'bg-purple-100 ring-2 ring-purple-400 scale-110' : ''}`}>{em}</button>
+                                        <button key={em} onClick={() => setNewPersonEmoji(em)} className={`text-xl p-1.5 rounded-lg hover:bg-[#f0eff8] transition-all ${newPersonEmoji === em ? 'bg-[#e8e8f4] ring-2 ring-[#cccce8] scale-110' : ''}`}>{em}</button>
                                     ))}
                                 </div>
                                 {newPersonEmoji && newPersonName.trim() && (
-                                    <div className="flex items-center gap-2 bg-purple-50 rounded-xl p-3 mb-3">
+                                    <div className="flex items-center gap-2 bg-[#f0eff8] rounded-xl p-3 mb-3">
                                         <span className="text-xl">{newPersonEmoji}</span><span className="font-medium text-sm">{newPersonName}</span>
                                     </div>
                                 )}
@@ -1609,39 +1713,61 @@
                                             setExternalPeople([...externalPeople, { id: maxId + 1, name: newPersonName.trim(), emoji: newPersonEmoji }]);
                                             setAddPersonModal(false);
                                         }
-                                    }} disabled={!newPersonName.trim() || !newPersonEmoji} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${newPersonName.trim() && newPersonEmoji ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' : 'bg-gray-200 text-gray-400'}`}>Ajouter</button>
+                                    }} disabled={!newPersonName.trim() || !newPersonEmoji} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${newPersonName.trim() && newPersonEmoji ? 'bg-[#cccce8] text-[#5a5981] font-bold' : 'bg-gray-200 text-[#7f7db0]'}`}>Ajouter</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* ===== CALENDAR PICKER MODAL ===== */}
+                    {showCalendarPicker && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowCalendarPicker(false); }}>
+                            <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-lg font-bold text-[#5a5981]">Choisir un calendrier</h3>
+                                    <button onClick={() => setShowCalendarPicker(false)} className="text-[#7f7db0]"><Icon name="x" size={20} /></button>
+                                </div>
+                                <p className="text-xs text-[#7f7db0] mb-3">Sélectionne le calendrier à utiliser pour Ratours. Ce choix sera partagé avec tous les utilisateurs.</p>
+                                <div className="space-y-2">
+                                    {availableCalendars.map(cal => (
+                                        <button key={cal.id} onClick={() => selectCalendar(cal.id, cal.name)} className="w-full text-left p-3 rounded-xl border-2 border-[#e8e8f4] hover:border-[#cccce8] hover:bg-[#f0eff8] transition-all">
+                                            <div className="font-medium text-sm text-[#5a5981]">📅 {cal.name}</div>
+                                            <div className="text-[10px] text-[#7f7db0] truncate mt-0.5">{cal.id}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                                {availableCalendars.length === 0 && <p className="text-center text-[#7f7db0] text-sm py-4">Aucun calendrier trouvé</p>}
+                            </div>
+                        </div>
+                    )}
+
                     {/* ===== NAV BAR (2 rows of 5) ===== */}
-                    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50 safe-bottom">
+                    <nav className="fixed bottom-0 left-0 right-0 bg-[#fefbe8] border-t border-[#e8e8f4] shadow-lg z-50 safe-bottom">
                         <div className="max-w-4xl mx-auto px-1 py-0.5">
                             <div className="grid grid-cols-5 gap-0.5">
                                 {[
-                                    { id: 'dashboard', label: 'Accueil', emoji: '🏠' },
-                                    { id: 'calendar', label: 'Agenda', emoji: '📅' },
-                                    { id: 'todos', label: 'Tâches', emoji: '✅' },
-                                    { id: 'courses', label: 'Courses', emoji: '🛒' },
-                                    { id: 'menus', label: 'Menus', emoji: '🍽️' },
+                                    { id: 'dashboard', label: 'Accueil', icon: 'home' },
+                                    { id: 'calendar', label: 'Agenda', icon: 'calendar' },
+                                    { id: 'todos', label: 'Tâches', icon: 'check' },
+                                    { id: 'courses', label: 'Courses', icon: 'cart' },
+                                    { id: 'menus', label: 'Menus', icon: 'chef' },
                                 ].map(tab => (
-                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-xl transition-colors ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-400'}`}>
-                                        <span className="text-base leading-none">{tab.emoji}</span>
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-xl transition-colors ${activeTab === tab.id ? 'bg-[#e8e8f4] text-[#5a5981]' : 'text-[#7f7db0]'}`}>
+                                        <Icon name={tab.icon} size={18} />
                                         <span className="text-[9px] leading-tight mt-0.5">{tab.label}</span>
                                     </button>
                                 ))}
                             </div>
                             <div className="grid grid-cols-5 gap-0.5">
                                 {[
-                                    { id: 'stats', label: 'Stats', emoji: '📊' },
-                                    { id: 'guard', label: 'Garde', emoji: '👶' },
-                                    { id: 'notes', label: 'Notes', emoji: '📝' },
-                                    { id: 'family', label: 'Infos', emoji: '👨‍👩‍👧' },
-                                    { id: 'settings', label: 'Réglages', emoji: '⚙️' },
+                                    { id: 'stats', label: 'Stats', icon: 'chart' },
+                                    { id: 'guard', label: 'Garde', icon: 'baby' },
+                                    { id: 'notes', label: 'Notes', icon: 'notes' },
+                                    { id: 'family', label: 'Infos', icon: 'users' },
+                                    { id: 'settings', label: 'Réglages', icon: 'settings' },
                                 ].map(tab => (
-                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-xl transition-colors ${activeTab === tab.id ? 'bg-purple-100 text-purple-600' : 'text-gray-400'}`}>
-                                        <span className="text-base leading-none">{tab.emoji}</span>
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center py-2 rounded-xl transition-colors ${activeTab === tab.id ? 'bg-[#e8e8f4] text-[#5a5981]' : 'text-[#7f7db0]'}`}>
+                                        <Icon name={tab.icon} size={18} />
                                         <span className="text-[9px] leading-tight mt-0.5">{tab.label}</span>
                                     </button>
                                 ))}
