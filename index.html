@@ -398,6 +398,66 @@
                 }
             }
 
+            // IMPORT events FROM Google Calendar
+            async fetchCalendarEvents(timeMinISO, timeMaxISO) {
+                if (!this.calendarId) { console.log('❌ No calendarId'); return []; }
+                try {
+                    console.log('📅 Fetching events from calendar:', this.calendarId);
+                    console.log('📅 Range:', timeMinISO, '→', timeMaxISO);
+                    const params = new URLSearchParams({
+                        timeMin: timeMinISO,
+                        timeMax: timeMaxISO,
+                        singleEvents: 'true',
+                        orderBy: 'startTime',
+                        maxResults: '250'
+                    });
+                    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(this.calendarId)}/events?${params}`;
+                    console.log('📅 URL:', url);
+                    const response = await fetch(url, {
+                        headers: { 'Authorization': `Bearer ${this.accessToken}` }
+                    });
+                    console.log('📅 Response status:', response.status);
+                    if (!response.ok) {
+                        const err = await response.text();
+                        console.error('❌ Fetch calendar events failed:', response.status, err);
+                        return [];
+                    }
+                    const data = await response.json();
+                    console.log('📅 Raw items count:', (data.items || []).length);
+                    if (data.items && data.items.length > 0) {
+                        console.log('📅 First event:', data.items[0].summary, data.items[0].start);
+                    }
+                    return (data.items || []).map(item => {
+                        const isAllDay = !!item.start?.date;
+                        const startDate = isAllDay ? item.start.date : (item.start?.dateTime || '').split('T')[0];
+                        let endDate = '';
+                        if (isAllDay && item.end?.date) {
+                            // Google uses exclusive end date for all-day events, subtract 1 day
+                            const d = new Date(item.end.date + 'T12:00:00');
+                            d.setDate(d.getDate() - 1);
+                            const endStr = d.toISOString().split('T')[0];
+                            // Only set endDate if it's a multi-day event
+                            if (endStr !== startDate) endDate = endStr;
+                        }
+                        const time = isAllDay ? '' : ((item.start?.dateTime || '').split('T')[1] || '').substring(0, 5);
+                        return {
+                            id: Date.now() + Math.random(),
+                            title: item.summary || '(sans titre)',
+                            date: startDate,
+                            endDate,
+                            time,
+                            category: '',
+                            assignedTo: '[]',
+                            emoji: '📅',
+                            calendarEventId: item.id
+                        };
+                    });
+                } catch (error) {
+                    console.error('Erreur import events:', error);
+                    return [];
+                }
+            }
+
             addHour(time) {
                 const [h, m] = time.split(':');
                 const hour = parseInt(h);
@@ -665,6 +725,7 @@
                     if (sharedCalId) {
                         gsheets.calendarId = sharedCalId;
                         setCalendarEnabled(true);
+                        console.log('📅 Calendar ID loaded from Sheet:', sharedCalId);
                     }
                     setLastSync(new Date());
                     setHasLoadedFromCloud(true);
@@ -731,6 +792,15 @@
                     return () => clearTimeout(timer);
                 }
             }, [todos, courses, menus, events, guardSchedule, familyInfo, notes, categories, externalPeople, isAuthenticated, currentUser, hasLoadedFromCloud]);
+
+            // Auto-import calendar events after initial load
+            const [calendarImported, setCalendarImported] = useState(false);
+            useEffect(() => {
+                if (hasLoadedFromCloud && calendarEnabled && !calendarImported && gsheets.calendarId) {
+                    setCalendarImported(true);
+                    importCalendarEvents();
+                }
+            }, [hasLoadedFromCloud, calendarEnabled, calendarImported]);
 
             // ===== HANDLERS =====
             const handleAdd = () => {
@@ -879,7 +949,42 @@
                 await gsheets.saveCalendarIdToSheet(calId);
                 setCalendarEnabled(true);
                 setShowCalendarPicker(false);
-                setCalendarStatus(`✅ "${calName}" sélectionné`);
+                setCalendarStatus(`✅ "${calName}" — import en cours...`);
+                // Import events from this calendar
+                await importCalendarEvents();
+            };
+            const importCalendarEvents = async () => {
+                if (!gsheets.calendarId) return;
+                try {
+                    // Fetch 6 months back + 12 months ahead
+                    const now = new Date();
+                    const timeMin = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString();
+                    const timeMax = new Date(now.getFullYear(), now.getMonth() + 12, 1).toISOString();
+                    const calEvents = await gsheets.fetchCalendarEvents(timeMin, timeMax);
+                    console.log(`📅 Imported ${calEvents.length} events from calendar`);
+                    if (calEvents.length === 0) {
+                        setCalendarStatus('✅ Calendrier connecté (0 événements)');
+                        return;
+                    }
+                    // Merge: keep existing events, add new ones from calendar (avoid duplicates by calendarEventId)
+                    const existingCalIds = new Set(events.filter(e => e.calendarEventId).map(e => e.calendarEventId));
+                    const newEvents = calEvents.filter(e => !existingCalIds.has(e.calendarEventId));
+                    if (newEvents.length > 0) {
+                        const merged = [...events, ...newEvents.map(e => ({
+                            ...e,
+                            id: Date.now() + Math.floor(Math.random() * 100000),
+                            assignedTo: [],
+                            emoji: '📅'
+                        }))];
+                        setEvents(merged);
+                        setCalendarStatus(`✅ ${newEvents.length} événement(s) importé(s)`);
+                    } else {
+                        setCalendarStatus('✅ Calendrier connecté — tout est à jour');
+                    }
+                } catch (e) {
+                    console.error('Import error:', e);
+                    setCalendarStatus('⚠️ Import partiel');
+                }
             };
             const disableCalendar = () => {
                 if (confirm('Désactiver la sync Google Calendar ?')) {
@@ -1495,7 +1600,8 @@
                                     ) : (
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-2 bg-green-50 rounded-xl p-2.5"><span>✅</span><span className="text-green-800 text-xs font-medium">Calendrier connecté</span></div>
-                                            <button onClick={syncEventsToCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">🔄 Synchroniser les événements existants</button>
+                                            <button onClick={importCalendarEvents} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">📥 Importer les événements du calendrier</button>
+                                            <button onClick={syncEventsToCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">📤 Pousser les événements vers le calendrier</button>
                                             <button onClick={enableCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-1.5 rounded-xl text-xs font-medium">🔀 Changer de calendrier</button>
                                             <button onClick={disableCalendar} className="w-full bg-gray-100 text-[#7f7db0] py-1.5 rounded-xl text-xs">Désactiver</button>
                                         </div>
