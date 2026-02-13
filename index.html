@@ -524,6 +524,7 @@
             const [newCatName, setNewCatName] = useState('');
             const [newCatEmoji, setNewCatEmoji] = useState('');
             const [hideDoneTodos, setHideDoneTodos] = useState(false);
+            const [editingTodo, setEditingTodo] = useState(null); // {id, title, priority, assignedTo}
             const [assignPickerTodo, setAssignPickerTodo] = useState(null);
             const [noteText, setNoteText] = useState('');
             const [addPersonModal, setAddPersonModal] = useState(false);
@@ -544,7 +545,7 @@
                     hexagon: `<polygon points="20,2 36,11 36,29 20,38 4,29 4,11" fill="${color}"/>`,
                 };
                 return React.createElement('span', {
-                    style: { display: 'inline-flex', width: size, height: size },
+                    style: { display: 'inline-flex', width: size + 'px', height: size + 'px', lineHeight: 0 },
                     dangerouslySetInnerHTML: { __html: `<svg width="${size}" height="${size}" viewBox="0 0 40 40">${shapes[shape] || shapes.circle}</svg>` }
                 });
             };
@@ -696,7 +697,7 @@
                         console.log('⚠️ Tab "notes" vide ou inexistant, essai "Notes"...');
                         notesData = await gsheets.readSheet('Notes');
                     }
-                    console.log('📝 Notes data:', notesData.length, 'rows');
+                    console.log('{React.createElement(Icon, {name:"notes", size:22})} Notes data:', notesData.length, 'rows');
                     if (notesData.length > 1) {
                         setNotes(gsheets.arrayToObjects(notesData).map(n => ({
                             ...n, id: parseInt(n.id) || Date.now(), author: parseInt(n.author) || currentUser, date: n.date || new Date().toISOString().split('T')[0]
@@ -931,6 +932,15 @@
             // FIX: familyInfo with React state
             const addFamilyInfo = (section, item) => { setFamilyInfo({ ...familyInfo, [section]: [...familyInfo[section], { ...item, id: Date.now() }] }); };
             const deleteFamilyInfo = (section, id) => { setFamilyInfo({ ...familyInfo, [section]: familyInfo[section].filter(item => item.id !== id) }); };
+            const updateFamilyInfo = (section, id, updates) => {
+                setFamilyInfo({ ...familyInfo, [section]: familyInfo[section].map(item => item.id === id ? { ...item, ...updates } : item) });
+            };
+            // Edit todo
+            const saveTodoEdit = () => {
+                if (!editingTodo) return;
+                setTodos(todos.map(t => t.id === editingTodo.id ? { ...t, title: editingTodo.title, priority: editingTodo.priority, assignedTo: editingTodo.assignedTo } : t));
+                setEditingTodo(null);
+            };
 
             // ===== CALENDAR =====
             const enableCalendar = async () => {
@@ -1078,7 +1088,7 @@
             if (isLoading) {
                 return (
                     <div className="min-h-screen bg-[#fde2aa] flex flex-col items-center justify-center gap-4">
-                        <div className="text-6xl">🏠</div>
+                        {React.createElement(AvatarSVG, {shape:"diamond", color:"#adbe70", size:64})}
                         <h1 className="text-2xl font-bold text-[#5a5981]">Plateforme Ratours</h1>
                         <div className="loader-dots"><span></span><span></span><span></span></div>
                         <p className="text-sm text-[#7f7db0]">Connexion en cours...</p>
@@ -1092,7 +1102,7 @@
                     <div className="min-h-screen bg-[#fde2aa] flex items-center justify-center p-6">
                         <div className="bg-[#fefbe8] rounded-3xl shadow-2xl p-8 max-w-md w-full">
                             <div className="text-center mb-8">
-                                <div className="text-6xl mb-4">🏠</div>
+                                <div className="mb-4">{React.createElement(AvatarSVG, {shape:"diamond", color:"#adbe70", size:64})}</div>
                                 <h1 className="text-3xl font-bold text-[#5a5981] mb-2">Plateforme Ratours</h1>
                                 <p className="text-[#5a5981]">Qui se connecte ?</p>
                             </div>
@@ -1107,7 +1117,7 @@
                             )}
                             {isAuthenticated && (
                                 <div className="mb-6 p-4 bg-green-50 rounded-2xl border-2 border-green-200">
-                                    <p className="text-sm text-green-800 mb-2">✅ Connecté</p>
+                                    <p className="text-sm text-green-800 mb-2">{React.createElement(Icon, {name:"check", size:14, color:"#16a34a"})} Connecté</p>
                                     <a href={`https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}`} target="_blank" className="text-xs text-[#5a5981]">Ouvrir le Sheet →</a>
                                 </div>
                             )}
@@ -1142,7 +1152,7 @@
             return (
                 <div className="min-h-screen bg-[#fde2aa] pb-32">
                     {/* HEADER */}
-                    <div className="bg-[#cccce8] text-[#5a5981] p-4 shadow-xl">
+                    <div className="bg-[#cccce8] text-[#5a5981] p-4" style={{boxShadow:"0 1px 3px rgba(90,89,129,0.5)"}}>
                         <div className="flex justify-between items-center max-w-4xl mx-auto">
                             <div>
                                 <h1 className="text-xl font-bold">Plateforme Ratours</h1>
@@ -1169,14 +1179,14 @@
                         {/* ===== DASHBOARD ===== */}
                         {activeTab === 'dashboard' && (
                             <div className="space-y-4">
-                                <div className="bg-[#cccce8] rounded-lg p-5 shadow-lg">
+                                <div className="bg-[#cccce8] rounded-lg p-5" style={{boxShadow:"0 1px 3px rgba(90,89,129,0.5)"}}>
                                     <h2 className="text-2xl font-bold mb-1 text-[#5a5981]">Bonjour {currentUserData.name} ! 👋</h2>
                                     <p className="text-[#7f7db0] text-sm capitalize">{new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
                                 </div>
                                 
                                 {todos.filter(t => !t.done && t.priority === 'high').length > 0 && (
                                     <div className="bg-red-50 border-2 border-red-300 rounded-lg shadow p-4">
-                                        <h3 className="font-bold text-red-700 mb-3 flex items-center gap-2 text-sm">🔴 URGENT ({todos.filter(t => !t.done && t.priority === 'high').length})</h3>
+                                        <h3 className="font-bold text-red-700 mb-3 flex items-center gap-2 text-sm">{React.createElement("span", {style:{width:10,height:10,borderRadius:"50%",background:"#ef4444",display:"inline-block"}})} URGENT ({todos.filter(t => !t.done && t.priority === 'high').length})</h3>
                                         {todos.filter(t => !t.done && t.priority === 'high').slice(0, 5).map(todo => (
                                             <div key={todo.id} className="flex items-center gap-3 py-1.5 bg-[#fefbe8] rounded-xl px-3 mb-1.5">
                                                 <input type="checkbox" className="h-5 w-5 accent-red-500" onChange={() => toggleTodo(todo.id)} />
@@ -1189,10 +1199,10 @@
 
                                 {upcomingEvents.length > 0 && (
                                     <div className="bg-[#fefbe8] rounded-lg shadow p-4">
-                                        <h3 className="font-bold text-[#5a5981] mb-3 text-sm">📅 Prochains événements</h3>
+                                        <h3 className="font-bold text-[#5a5981] mb-3 text-sm">{React.createElement(Icon, {name:"calendar", size:16})} Prochains événements</h3>
                                         {upcomingEvents.slice(0, 4).map(event => (
                                             <div key={event.id} className="flex items-center gap-3 py-2 border-b last:border-0">
-                                                <span className="text-xl">{event.emoji}</span>
+                                                {React.createElement(Icon, {name:"calendar", size:20, color:"#cccce8"})}
                                                 <div className="flex-1 min-w-0">
                                                     <span className="font-medium text-sm block truncate">{event.title}</span>
                                                     <span className="text-xs text-[#7f7db0]">
@@ -1208,18 +1218,18 @@
                                 )}
                                 
                                 <div className="bg-[#fefbe8] rounded-lg shadow p-4">
-                                    <h3 className="font-bold text-[#5a5981] mb-3 text-sm">✅ Mes tâches ({myTodos.length})</h3>
+                                    <h3 className="font-bold text-[#5a5981] mb-3 text-sm">{React.createElement(Icon, {name:"check", size:16})} Mes tâches ({myTodos.length})</h3>
                                     {myTodos.slice(0, 5).map(todo => (
                                         <div key={todo.id} className="flex items-center gap-3 py-1.5">
                                             <input type="checkbox" className="h-5 w-5" onChange={() => toggleTodo(todo.id)} />
                                             <span className="text-sm">{todo.title}</span>
                                         </div>
                                     ))}
-                                    {myTodos.length === 0 && <p className="text-sm text-[#7f7db0]">Rien pour l'instant 🎉</p>}
+                                    {myTodos.length === 0 && <p className="text-sm text-[#7f7db0]">Rien pour l'instant {React.createElement(Icon, {name:"check", size:14, color:"#adbe70"})}</p>}
                                 </div>
 
                                 <div className="bg-[#fefbe8] rounded-lg shadow p-4">
-                                    <h3 className="font-bold text-[#5a5981] mb-3 text-sm">🛒 Courses ({courses.filter(c => !c.checked).length})</h3>
+                                    <h3 className="font-bold text-[#5a5981] mb-3 text-sm">{React.createElement(Icon, {name:"cart", size:22})} Courses ({courses.filter(c => !c.checked).length})</h3>
                                     {courses.filter(c => !c.checked).slice(0, 6).map(course => (
                                         <div key={course.id} className="flex items-center gap-3 py-1">
                                             <input type="checkbox" className="h-4 w-4" onChange={() => toggleCourse(course.id)} />
@@ -1230,7 +1240,7 @@
                                 
                                 {notes.length > 0 && (
                                     <div className="bg-[#fefbe8] rounded-lg shadow p-4">
-                                        <h3 className="font-bold text-[#5a5981] mb-3 text-sm">📝 Dernières notes</h3>
+                                        <h3 className="font-bold text-[#5a5981] mb-3 text-sm">{React.createElement(Icon, {name:"notes", size:16})} Dernières notes</h3>
                                         {notes.slice(0, 3).map(note => (
                                             <div key={note.id} className="py-2 border-b last:border-0">
                                                 <div className="flex items-center gap-2 mb-0.5">
@@ -1265,8 +1275,8 @@
                             return (
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-2xl font-bold">📅 Agenda</h2>
-                                    {calendarEnabled && <span className="text-xs bg-[#e8e8f4] text-[#5a5981] px-2 py-1 rounded-full">📅 Cal.</span>}
+                                    <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"calendar", size:22})} Agenda</h2>
+                                    {calendarEnabled && <span className="text-xs bg-[#e8e8f4] text-[#5a5981] px-2 py-1 rounded-full">{React.createElement(Icon, {name:"calendar", size:12})} Cal.</span>}
                                 </div>
                                 {/* Month navigation */}
                                 <div className="flex items-center justify-between bg-[#fefbe8] rounded-lg shadow p-3">
@@ -1285,7 +1295,7 @@
                                     const dayCount = isPeriod ? Math.ceil((new Date(event.endDate + 'T12:00:00') - new Date(event.date + 'T12:00:00')) / 86400000) + 1 : 0;
                                     return (
                                         <div key={event.id} className={`bg-[#fefbe8] rounded-lg shadow p-4 flex items-start gap-3 ${isPeriod ? 'border-l-4 border-[#cccce8]' : ''}`}>
-                                            <span className="text-2xl mt-0.5">{event.emoji}</span>
+                                            {React.createElement(Icon, {name:"calendar", size:24, color:"#cccce8"})}
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="font-bold text-[#5a5981] text-sm">{event.title}</h3>
                                                 <p className="text-xs text-[#7f7db0] mt-0.5">
@@ -1303,7 +1313,7 @@
                                                 )}
                                             </div>
                                             <div className="flex flex-col items-center gap-1">
-                                                {event.calendarEventId && <span className="text-xs">📅</span>}
+                                                {event.calendarEventId && React.createElement(Icon, {name:"cloud", size:12, color:"#adbe70"})}
                                                 <button onClick={() => deleteEvent(event.id)} className="text-red-400"><Icon name="x" size={16} /></button>
                                             </div>
                                         </div>
@@ -1318,7 +1328,7 @@
                         {activeTab === 'todos' && (
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-2xl font-bold">✅ Tâches</h2>
+                                    <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"check", size:22})} Tâches</h2>
                                     <button onClick={() => setHideDoneTodos(!hideDoneTodos)} className={`text-xs px-3 py-1.5 rounded-full ${hideDoneTodos ? 'bg-[#e8e8f4] text-[#5a5981]' : 'bg-gray-100 text-[#7f7db0]'}`}>
                                         {hideDoneTodos ? '👁️ Voir terminées' : '🙈 Masquer faites'}
                                     </button>
@@ -1336,8 +1346,9 @@
                                                         <span className={`text-sm ${todo.done ? 'line-through text-[#7f7db0]' : ''}`}>{todo.title}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
-                                                        {todo.priority === 'high' && <span className="text-xs">🔴</span>}
-                                                        {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
+                                                        {todo.priority === 'high' && <span style={{width:8,height:8,borderRadius:'50%',background:'#ef4444',display:'inline-block'}}></span>}
+                                                        {todo.priority === 'medium' && <span style={{width:8,height:8,borderRadius:'50%',background:'#eab308',display:'inline-block'}}></span>}
+                                                        <button onClick={() => setEditingTodo({id: todo.id, title: todo.title, priority: todo.priority || '', assignedTo: todo.assignedTo || ''})} className="text-[#7f7db0]"><Icon name="edit" size={14} /></button>
                                                         <button onClick={() => deleteTodo(todo.id)} className="text-red-400"><Icon name="x" size={14} /></button>
                                                     </div>
                                                 </div>
@@ -1359,9 +1370,10 @@
                                                         <span className={`text-sm ${todo.done ? 'line-through text-[#7f7db0]' : ''}`}>{todo.title}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
-                                                        {todo.priority === 'high' && <span className="text-xs">🔴</span>}
-                                                        {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
+                                                        {todo.priority === 'high' && <span style={{width:8,height:8,borderRadius:'50%',background:'#ef4444',display:'inline-block'}}></span>}
+                                                        {todo.priority === 'medium' && <span style={{width:8,height:8,borderRadius:'50%',background:'#eab308',display:'inline-block'}}></span>}
                                                         {(() => { const u = users.find(u => u.id === todo.assignedTo); return u ? React.createElement(AvatarSVG, {shape: u.shape, color: u.color, size: 16}) : null; })()}
+                                                        <button onClick={() => setEditingTodo({id: todo.id, title: todo.title, priority: todo.priority || '', assignedTo: todo.assignedTo || ''})} className="text-[#7f7db0]"><Icon name="edit" size={14} /></button>
                                                         <button onClick={() => deleteTodo(todo.id)} className="text-red-400 ml-1"><Icon name="x" size={14} /></button>
                                                     </div>
                                                 </div>
@@ -1376,7 +1388,7 @@
                                     const orphans = todos.filter(t => t.assignedTo && !knownCatIds.includes(t.category) && (!hideDoneTodos || !t.done));
                                     return orphans.length > 0 ? (
                                         <div className="bg-[#fefbe8] rounded-lg shadow p-4">
-                                            <h3 className="font-bold text-[#5a5981] mb-2 flex items-center gap-2 text-sm">📋 Autres</h3>
+                                            <h3 className="font-bold text-[#5a5981] mb-2 flex items-center gap-2 text-sm">{React.createElement(Icon, {name:"check", size:14})} Autres</h3>
                                             {orphans.map(todo => (
                                                 <div key={todo.id} className="flex items-center justify-between py-2 border-b last:border-0">
                                                     <div className="flex items-center gap-3 flex-1">
@@ -1384,9 +1396,10 @@
                                                         <span className={`text-sm ${todo.done ? 'line-through text-[#7f7db0]' : ''}`}>{todo.title}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
-                                                        {todo.priority === 'high' && <span className="text-xs">🔴</span>}
-                                                        {todo.priority === 'medium' && <span className="text-xs">🟡</span>}
+                                                        {todo.priority === 'high' && <span style={{width:8,height:8,borderRadius:'50%',background:'#ef4444',display:'inline-block'}}></span>}
+                                                        {todo.priority === 'medium' && <span style={{width:8,height:8,borderRadius:'50%',background:'#eab308',display:'inline-block'}}></span>}
                                                         {(() => { const u = users.find(u => u.id === todo.assignedTo); return u ? React.createElement(AvatarSVG, {shape: u.shape, color: u.color, size: 16}) : null; })()}
+                                                        <button onClick={() => setEditingTodo({id: todo.id, title: todo.title, priority: todo.priority || '', assignedTo: todo.assignedTo || ''})} className="text-[#7f7db0]"><Icon name="edit" size={14} /></button>
                                                         <button onClick={() => deleteTodo(todo.id)} className="text-red-400 ml-1"><Icon name="x" size={14} /></button>
                                                     </div>
                                                 </div>
@@ -1403,7 +1416,7 @@
                         {activeTab === 'courses' && (
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-2xl font-bold">🛒 Courses</h2>
+                                    <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"cart", size:22})} Courses</h2>
                                     {courses.some(c => c.checked) && (
                                         <button onClick={clearCheckedCourses} className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-full border border-red-200">
                                             🗑️ Vider cochés ({courses.filter(c => c.checked).length})
@@ -1438,7 +1451,7 @@
                         {/* ===== MENUS (grouped by day) ===== */}
                         {activeTab === 'menus' && (
                             <div className="space-y-3">
-                                <h2 className="text-2xl font-bold">🍽️ Menus</h2>
+                                <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"chef", size:22})} Menus</h2>
                                 {DAY_ORDER.map(day => {
                                     const dayMenus = menus.filter(m => m.day === day);
                                     if (dayMenus.length === 0) return null;
@@ -1448,7 +1461,7 @@
                                             {dayMenus.map(m => (
                                                 <div key={m.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-xl">{m.emoji}</span>
+                                                        {React.createElement(Icon, {name:"chef", size:20, color:"#cccce8"})}
                                                         <span className="text-sm">{m.meal}</span>
                                                     </div>
                                                     <button onClick={() => deleteMenu(m.id)} className="text-red-400"><Icon name="x" size={14} /></button>
@@ -1464,12 +1477,12 @@
                         {/* ===== STATS ===== */}
                         {activeTab === 'stats' && (
                             <div className="space-y-4">
-                                <h2 className="text-2xl font-bold">📊 Statistiques</h2>
+                                <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"chart", size:22})} Statistiques</h2>
                                 <div className="bg-[#e8e8f4] rounded-lg p-5 border-2 border-[#e8e8f4]">
                                     <h3 className="text-lg font-bold mb-3">⚖️ Équilibre parental</h3>
                                     {stats.isBalanced && stats.totalTasks > 0 && (
                                         <div className="bg-green-100 border border-green-300 rounded-xl p-2 mb-3">
-                                            <p className="text-green-800 font-medium text-sm">🎉 Charge bien répartie !</p>
+                                            <p className="text-green-800 font-medium text-sm">{React.createElement(Icon, {name:"check", size:16, color:"#16a34a"})} Charge bien répartie !</p>
                                         </div>
                                     )}
                                     <div className="flex justify-between mb-2 text-sm">
@@ -1495,7 +1508,7 @@
                         {activeTab === 'guard' && (
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <h2 className="text-2xl font-bold">👶 Garde</h2>
+                                    <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"baby", size:22})} Garde</h2>
                                     <div className="flex gap-1.5">
                                         <button onClick={() => setCurrentWeekOffset(currentWeekOffset - 1)} className="bg-[#e8e8f4] px-2.5 py-1.5 rounded-lg text-xs font-medium">←</button>
                                         <button onClick={() => setCurrentWeekOffset(0)} className="bg-[#cccce8] text-white px-2.5 py-1.5 rounded-lg text-xs font-medium">Auj.</button>
@@ -1533,7 +1546,7 @@
                         {/* ===== NOTES (controlled + send button) ===== */}
                         {activeTab === 'notes' && (
                             <div className="space-y-3">
-                                <h2 className="text-2xl font-bold">📝 Notes</h2>
+                                <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"notes", size:22})} Notes</h2>
                                 <div className="bg-[#fefbe8] rounded-lg shadow p-4">
                                     <textarea
                                         placeholder="Écrivez une note (max 300 car.)..."
@@ -1572,16 +1585,16 @@
                         {/* ===== FAMILY (React state for modal) ===== */}
                         {activeTab === 'family' && (
                             <div className="space-y-3">
-                                <h2 className="text-2xl font-bold">👨‍👩‍👧 Infos Famille</h2>
+                                <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"users", size:22})} Infos Famille</h2>
                                 {[
-                                    { key: 'urgences', title: '🚨 Urgences', type: 'phone' },
-                                    { key: 'utiles', title: '📞 Numéros utiles', type: 'phone' },
-                                    { key: 'links', title: '🔗 Liens', type: 'link' },
-                                    { key: 'notes', title: '📝 Notes', type: 'text' },
+                                    { key: 'urgences', title: 'Urgences', type: 'phone', iconName: 'heart' },
+                                    { key: 'utiles', title: 'Numéros utiles', type: 'phone', iconName: 'heart' },
+                                    { key: 'links', title: 'Liens', type: 'link', iconName: 'search' },
+                                    { key: 'notes', title: 'Notes', type: 'text', iconName: 'notes' },
                                 ].map(section => (
                                     <div key={section.key} className="bg-[#fefbe8] rounded-lg shadow p-4">
                                         <div className="flex justify-between items-center mb-2">
-                                            <h3 className="font-bold text-sm">{section.title}</h3>
+                                            <h3 className="font-bold text-sm flex items-center gap-1"><Icon name={section.iconName} size={14} /> {section.title}</h3>
                                             <button onClick={() => { setEditingInfo({ section: section.key, type: section.type }); setInfoLabel(''); setInfoValue(''); }} className="bg-[#e8e8f4] text-[#5a5981] px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                         </div>
                                         {familyInfo[section.key].map(item => (
@@ -1594,7 +1607,8 @@
                                                         <span className="text-xs text-[#7f7db0] block">{item.value}</span>
                                                     )}
                                                 </div>
-                                                <button onClick={() => deleteFamilyInfo(section.key, item.id)} className="text-red-400 ml-2"><Icon name="trash" size={14} /></button>
+                                                <button onClick={() => { setEditingInfo({ section: section.key, type: section.type, editId: item.id }); setInfoLabel(item.label); setInfoValue(item.value); }} className="text-[#7f7db0] ml-1"><Icon name="edit" size={14} /></button>
+                                                <button onClick={() => deleteFamilyInfo(section.key, item.id)} className="text-red-400 ml-1"><Icon name="trash" size={14} /></button>
                                             </div>
                                         ))}
                                     </div>
@@ -1602,12 +1616,12 @@
                                 {editingInfo && (
                                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditingInfo(null); }}>
                                         <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-md w-full p-5 max-h-[80vh] overflow-y-auto">
-                                            <h3 className="text-lg font-bold mb-3">Ajouter une info</h3>
+                                            <h3 className="text-lg font-bold mb-3">{editingInfo.editId ? 'Modifier' : 'Ajouter'}</h3>
                                             <input type="text" placeholder="Label" value={infoLabel} onChange={(e) => setInfoLabel(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
                                             <input type={editingInfo.type === 'link' ? 'url' : 'text'} placeholder={editingInfo.type === 'phone' ? 'Téléphone' : editingInfo.type === 'link' ? 'URL' : 'Texte'} value={infoValue} onChange={(e) => setInfoValue(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-4 text-sm" />
                                             <div className="flex gap-3">
                                                 <button onClick={() => setEditingInfo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
-                                                <button onClick={() => { if (infoLabel && infoValue) { addFamilyInfo(editingInfo.section, { label: infoLabel, value: infoValue, type: editingInfo.type }); setEditingInfo(null); } }} className="flex-1 bg-[#cccce8] text-[#5a5981] font-bold py-3 rounded-xl text-sm font-medium">Ajouter</button>
+                                                <button onClick={() => { if (infoLabel && infoValue) { if (editingInfo.editId) { updateFamilyInfo(editingInfo.section, editingInfo.editId, { label: infoLabel, value: infoValue }); } else { addFamilyInfo(editingInfo.section, { label: infoLabel, value: infoValue, type: editingInfo.type }); } setEditingInfo(null); } }} className="flex-1 bg-[#cccce8] text-[#5a5981] font-bold py-3 rounded-xl text-sm font-medium">{editingInfo.editId ? 'Enregistrer' : 'Ajouter'}</button>
                                             </div>
                                         </div>
                                     </div>
@@ -1618,20 +1632,20 @@
                         {/* ===== SETTINGS ===== */}
                         {activeTab === 'settings' && (
                             <div className="space-y-3">
-                                <h2 className="text-2xl font-bold">⚙️ Réglages</h2>
+                                <h2 className="text-2xl font-bold">{React.createElement(Icon, {name:"settings", size:22})} Réglages</h2>
                                 
                                 {/* Google Calendar */}
                                 <div className="bg-[#fefbe8] rounded-lg shadow p-4">
-                                    <h3 className="font-bold text-sm flex items-center gap-2 mb-3">📅 Google Calendar</h3>
+                                    <h3 className="font-bold text-sm flex items-center gap-2 mb-3">{React.createElement(Icon, {name:"calendar", size:16})} Google Calendar</h3>
                                     <p className="text-xs text-[#7f7db0] mb-3">Sélectionne un calendrier existant pour synchroniser les événements</p>
                                     {!calendarEnabled ? (
-                                        <button onClick={enableCalendar} className="w-full bg-[#cccce8] text-[#5a5981] py-2.5 rounded-xl text-sm font-medium">📅 Choisir un calendrier</button>
+                                        <button onClick={enableCalendar} className="w-full bg-[#cccce8] text-[#5a5981] py-2.5 rounded-xl text-sm font-medium">{React.createElement(Icon, {name:"calendar", size:14})} Choisir un calendrier</button>
                                     ) : (
                                         <div className="space-y-2">
-                                            <div className="flex items-center gap-2 bg-green-50 rounded-xl p-2.5"><span>✅</span><span className="text-green-800 text-xs font-medium">Calendrier connecté</span></div>
-                                            <button onClick={importCalendarEvents} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">📥 Importer les événements du calendrier</button>
-                                            <button onClick={syncEventsToCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">📤 Pousser les événements vers le calendrier</button>
-                                            <button onClick={enableCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-1.5 rounded-xl text-xs font-medium">🔀 Changer de calendrier</button>
+                                            <div className="flex items-center gap-2 bg-green-50 rounded-xl p-2.5">{React.createElement(Icon, {name:"check", size:14, color:"#16a34a"})}<span className="text-green-800 text-xs font-medium">Calendrier connecté</span></div>
+                                            <button onClick={importCalendarEvents} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">{React.createElement(Icon, {name:"cloud", size:14})} Importer depuis le calendrier</button>
+                                            <button onClick={syncEventsToCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-2 rounded-xl text-xs font-medium">{React.createElement(Icon, {name:"sync", size:14})} Pousser vers le calendrier</button>
+                                            <button onClick={enableCalendar} className="w-full bg-[#f0eff8] text-[#5a5981] py-1.5 rounded-xl text-xs font-medium">{React.createElement(Icon, {name:"edit", size:14})} Changer de calendrier</button>
                                             <button onClick={disableCalendar} className="w-full bg-gray-100 text-[#7f7db0] py-1.5 rounded-xl text-xs">Désactiver</button>
                                         </div>
                                     )}
@@ -1641,7 +1655,7 @@
                                 {/* Personnes externes */}
                                 <div className="bg-[#fefbe8] rounded-lg shadow p-4">
                                     <div className="flex justify-between items-center mb-2">
-                                        <h3 className="font-bold text-sm">👥 Personnes externes</h3>
+                                        <h3 className="font-bold text-sm">{React.createElement(Icon, {name:"users", size:16})} Personnes externes</h3>
                                         <button onClick={() => { setAddPersonModal(true); setNewPersonName(''); setNewPersonEmoji(''); }} className="bg-[#e8e8f4] text-[#5a5981] px-2.5 py-1 rounded-lg text-xs font-medium">+ Ajouter</button>
                                     </div>
                                     {externalPeople.map(person => (
@@ -1654,9 +1668,9 @@
 
                                 {/* Categories with emoji modal */}
                                 {[
-                                    { section: 'courses', title: '🛒 Catégories Courses' },
-                                    { section: 'todos', title: '✅ Catégories Tâches' },
-                                    { section: 'events', title: '📅 Catégories Événements' },
+                                    { section: 'courses', title: '{React.createElement(Icon, {name:"cart", size:16})} Catégories Courses' },
+                                    { section: 'todos', title: '{React.createElement(Icon, {name:"check", size:16})} Catégories Tâches' },
+                                    { section: 'events', title: '{React.createElement(Icon, {name:"calendar", size:16})} Catégories Événements' },
                                 ].map(({ section, title }) => (
                                     <div key={section} className="bg-[#fefbe8] rounded-lg shadow p-4">
                                         <div className="flex justify-between items-center mb-2">
@@ -1691,13 +1705,13 @@
                                 {!addType ? (
                                     <div className="space-y-2">
                                         {[
-                                            { type: 'event', label: 'Événement', emoji: '📅', bg: 'bg-[#f0eff8] hover:bg-[#e8e8f4]' },
-                                            { type: 'todo', label: 'Tâche', emoji: '✅', bg: 'bg-green-50 hover:bg-green-100' },
-                                            { type: 'course', label: 'Course', emoji: '🛒', bg: 'bg-orange-50 hover:bg-orange-100' },
-                                            { type: 'menu', label: 'Menu', emoji: '🍽️', bg: 'bg-[#f0eff8] hover:bg-[#e8e8f4]' },
+                                            { type: 'event', label: 'Événement', icon: 'calendar', bg: 'bg-[#f0eff8] hover:bg-[#e8e8f4]' },
+                                            { type: 'todo', label: 'Tâche', icon: 'check', bg: 'bg-green-50 hover:bg-green-100' },
+                                            { type: 'course', label: 'Course', icon: 'cart', bg: 'bg-orange-50 hover:bg-orange-100' },
+                                            { type: 'menu', label: 'Menu', icon: 'chef', bg: 'bg-[#f0eff8] hover:bg-[#e8e8f4]' },
                                         ].map(opt => (
                                             <button key={opt.type} onClick={() => setAddType(opt.type)} className={`w-full ${opt.bg} p-4 rounded-2xl text-left flex items-center gap-3`}>
-                                                <span className="text-2xl">{opt.emoji}</span><span className="font-semibold">{opt.label}</span>
+                                                {React.createElement(Icon, {name: opt.icon, size:28, color:'#5a5981'})}<span className="font-semibold">{opt.label}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -1716,8 +1730,8 @@
                                             <>
                                                 {/* Period toggle */}
                                                 <div className="flex gap-2 bg-gray-100 p-1 rounded-xl">
-                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: false, endDate: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${!newItem.isPeriod ? 'bg-[#fefbe8] shadow text-[#5a5981]' : 'text-[#7f7db0]'}`}>📍 Ponctuel</button>
-                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: true, time: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${newItem.isPeriod ? 'bg-[#fefbe8] shadow text-[#5a5981]' : 'text-[#7f7db0]'}`}>📅 Période</button>
+                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: false, endDate: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${!newItem.isPeriod ? 'bg-[#fefbe8] shadow text-[#5a5981]' : 'text-[#7f7db0]'}`}>{React.createElement(Icon, {name:"star", size:12})} Ponctuel</button>
+                                                    <button onClick={() => setNewItem({ ...newItem, isPeriod: true, time: '' })} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${newItem.isPeriod ? 'bg-[#fefbe8] shadow text-[#5a5981]' : 'text-[#7f7db0]'}`}>{React.createElement(Icon, {name:"calendar", size:12})} Période</button>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <div className="flex-1">
@@ -1749,8 +1763,8 @@
                                                 </select>
                                                 <select value={newItem.priority} onChange={(e) => setNewItem({ ...newItem, priority: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                     <option value="low">⚪ Basse</option>
-                                                    <option value="medium">🟡 Moyenne</option>
-                                                    <option value="high">🔴 Haute</option>
+                                                    <option value="medium">● Moyenne</option>
+                                                    <option value="high">● Haute</option>
                                                 </select>
                                                 <select value={newItem.assignedTo || ''} onChange={(e) => setNewItem({ ...newItem, assignedTo: e.target.value ? parseInt(e.target.value) : null })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
                                                     <option value="">❓ Non assigné</option>
@@ -1854,6 +1868,40 @@
                         </div>
                     )}
 
+                    {/* ===== EDIT TODO MODAL ===== */}
+                    {editingTodo && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) setEditingTodo(null); }}>
+                            <div className="bg-[#fefbe8] rounded-3xl shadow-2xl max-w-md w-full p-5">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-lg font-bold text-[#5a5981]">Modifier la tâche</h3>
+                                    <button onClick={() => setEditingTodo(null)} className="text-[#7f7db0]"><Icon name="x" size={20} /></button>
+                                </div>
+                                <input type="text" value={editingTodo.title} onChange={(e) => setEditingTodo({...editingTodo, title: e.target.value})} className="w-full px-4 py-3 border-2 border-[#e8e8f4] rounded-xl mb-3 text-sm" autoFocus />
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <div>
+                                        <label className="text-xs text-[#7f7db0] mb-1 block">Priorité</label>
+                                        <select value={editingTodo.priority || ''} onChange={(e) => setEditingTodo({...editingTodo, priority: e.target.value})} className="w-full px-3 py-2 border-2 border-[#e8e8f4] rounded-xl text-sm">
+                                            <option value="">Normale</option>
+                                            <option value="medium">● Moyenne</option>
+                                            <option value="high">● Haute</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-[#7f7db0] mb-1 block">Assigné à</label>
+                                        <select value={editingTodo.assignedTo || ''} onChange={(e) => setEditingTodo({...editingTodo, assignedTo: e.target.value ? parseInt(e.target.value) : ''})} className="w-full px-3 py-2 border-2 border-[#e8e8f4] rounded-xl text-sm">
+                                            <option value="">Non assigné</option>
+                                            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setEditingTodo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
+                                    <button onClick={saveTodoEdit} className="flex-1 bg-[#cccce8] text-[#5a5981] font-bold py-3 rounded-xl text-sm">Enregistrer</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* ===== CALENDAR PICKER MODAL ===== */}
                     {showCalendarPicker && (
                         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4" onClick={(e) => { if (e.target === e.currentTarget) setShowCalendarPicker(false); }}>
@@ -1866,7 +1914,7 @@
                                 <div className="space-y-2">
                                     {availableCalendars.map(cal => (
                                         <button key={cal.id} onClick={() => selectCalendar(cal.id, cal.name)} className="w-full text-left p-3 rounded-xl border-2 border-[#e8e8f4] hover:border-[#cccce8] hover:bg-[#f0eff8] transition-all">
-                                            <div className="font-medium text-sm text-[#5a5981]">📅 {cal.name}</div>
+                                            <div className="font-medium text-sm text-[#5a5981] flex items-center gap-1">{React.createElement(Icon, {name:"calendar", size:14})} {cal.name}</div>
                                             <div className="text-[10px] text-[#7f7db0] truncate mt-0.5">{cal.id}</div>
                                         </button>
                                     ))}
