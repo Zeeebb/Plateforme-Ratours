@@ -179,8 +179,8 @@
             silentRefresh() {
                 return new Promise((resolve) => {
                     if (!this.tokenClient) { resolve(false); return; }
-                    // Timeout: if no response in 3s, silent refresh failed
-                    const timeout = setTimeout(() => { resolve(false); }, 3000);
+                    // Timeout: if no response in 5s, silent refresh failed
+                    const timeout = setTimeout(() => { resolve(false); }, 5000);
                     this.tokenClient.callback = (response) => {
                         clearTimeout(timeout);
                         if (response.access_token) {
@@ -497,6 +497,7 @@
         };
 
         // ===== APP =====
+        const APP_VERSION = 'v2.4';
         const App = () => {
             const [isGoogleReady, setIsGoogleReady] = useState(false);
             const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -525,6 +526,7 @@
             const [newCatEmoji, setNewCatEmoji] = useState('');
             const [hideDoneTodos, setHideDoneTodos] = useState(false);
             const [editingTodo, setEditingTodo] = useState(null); // {id, title, priority, assignedTo}
+            const [reconnectFailed, setReconnectFailed] = useState(false);
             const [assignPickerTodo, setAssignPickerTodo] = useState(null);
             const [noteText, setNoteText] = useState('');
             const [addPersonModal, setAddPersonModal] = useState(false);
@@ -635,6 +637,28 @@
             useEffect(() => {
                 if (isAuthenticated && currentUser && gsheets.hasSpreadsheet() && !hasLoadedFromCloud) syncFromCloud();
             }, [currentUser, isAuthenticated]);
+
+            // Auto-reconnect when user is known but session expired
+            useEffect(() => {
+                if (currentUser && !isAuthenticated && !isLoading && isGoogleReady) {
+                    console.log('🔄 Auto-reconnect: user connu mais pas auth...');
+                    const tryReconnect = async () => {
+                        // 1st: try silent refresh (no popup)
+                        console.log('🔄 Tentative silencieuse...');
+                        const refreshed = await gsheets.silentRefresh();
+                        if (refreshed) {
+                            console.log('✅ Reconnexion silencieuse réussie !');
+                            setIsAuthenticated(true);
+                            return;
+                        }
+                        // 2nd: silent failed → show manual button
+                        console.log('⚠️ Refresh silencieux échoué → bouton manuel');
+                        setReconnectFailed(true);
+                    };
+                    const timer = setTimeout(tryReconnect, 300);
+                    return () => clearTimeout(timer);
+                }
+            }, [currentUser, isAuthenticated, isLoading, isGoogleReady]);
 
             // ===== SYNC FROM CLOUD =====
             const syncFromCloud = async () => {
@@ -1092,6 +1116,7 @@
                         <h1 className="text-2xl font-bold text-[#5a5981]">Plateforme Ratours</h1>
                         <div className="loader-dots"><span></span><span></span><span></span></div>
                         <p className="text-sm text-[#7f7db0]">Connexion en cours...</p>
+                        <span className="text-[10px] text-[#7f7db0] opacity-50">{APP_VERSION}</span>
                     </div>
                 );
             }
@@ -1136,6 +1161,40 @@
 
             const currentUserData = users.find(u => u.id === currentUser);
             const myTodos = todos.filter(t => !t.done && t.assignedTo === currentUser);
+
+            // ===== RECONNECTION SCREEN (user known but token expired) =====
+            if (currentUser && !isAuthenticated && !isLoading) {
+                return (
+                    <div className="min-h-screen bg-[#fde2aa] flex flex-col items-center justify-center gap-4 p-6">
+                        <AvatarSVG shape={currentUserData?.shape || 'diamond'} color={currentUserData?.color || '#adbe70'} size={56} />
+                        <h2 className="text-xl font-bold text-[#5a5981]">Bonjour {currentUserData?.name}</h2>
+                        {!reconnectFailed ? (
+                            <>
+                                <div className="loader-dots"><span></span><span></span><span></span></div>
+                                <p className="text-sm text-[#7f7db0] text-center">Reconnexion en cours...</p>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-sm text-[#7f7db0] text-center">Session expirée, reconnecte-toi</p>
+                                <button onClick={async () => {
+                                    setReconnectFailed(false);
+                                    try {
+                                        const success = await gsheets.requestAuth();
+                                        if (success) { setIsAuthenticated(true); }
+                                        else { setReconnectFailed(true); }
+                                    } catch(e) { setReconnectFailed(true); }
+                                }} className="bg-[#cccce8] text-[#5a5981] font-bold px-6 py-3 rounded-xl text-sm flex items-center gap-2">
+                                    <Icon name="cloud" size={16} /> Se connecter avec Google
+                                </button>
+                            </>
+                        )}
+                        <button onClick={() => { setCurrentUser(null); setHasLoadedFromCloud(false); }} className="text-[#7f7db0] text-xs underline mt-2">
+                            Changer d'utilisateur
+                        </button>
+                        <span className="text-[10px] text-[#7f7db0] opacity-50">{APP_VERSION}</span>
+                    </div>
+                );
+            }
 
             // Show loader while first cloud sync (only if authenticated)
             if (currentUser && isAuthenticated && !hasLoadedFromCloud) {
