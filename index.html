@@ -1763,8 +1763,8 @@
                                             <input type="text" placeholder="Label" value={infoLabel} onChange={(e) => setInfoLabel(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-3 text-sm" autoFocus />
                                             <input type={editingInfo.type === 'link' ? 'url' : 'text'} placeholder={editingInfo.type === 'phone' ? 'Téléphone' : editingInfo.type === 'link' ? 'URL' : 'Texte'} value={infoValue} onChange={(e) => setInfoValue(e.target.value)} className="w-full px-4 py-3 border-2 rounded-xl mb-4 text-sm" />
                                             <div className="flex gap-3">
-                                                <button onClick={() => setEditingInfo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
-                                                <button onClick={() => { if (infoLabel && infoValue) { if (editingInfo.editId) { updateFamilyInfo(editingInfo.section, editingInfo.editId, { label: infoLabel, value: infoValue }); } else { addFamilyInfo(editingInfo.section, { label: infoLabel, value: infoValue, type: editingInfo.type }); } setEditingInfo(null); } }} className="flex-1 bg-[var(--turquoise)] text-[var(--text)] font-bold py-3 rounded-xl text-sm font-medium">{editingInfo.editId ? 'Enregistrer' : 'Ajouter'}</button>
+                                                <button onClick={() => setEditingInfo(null)} className="flex-1 nb-btn py-3 text-sm" style={{background:"var(--card)"}}>Annuler</button>
+                                                <button onClick={() => { if (infoLabel && infoValue) { if (editingInfo.editId) { updateFamilyInfo(editingInfo.section, editingInfo.editId, { label: infoLabel, value: infoValue }); } else { addFamilyInfo(editingInfo.section, { label: infoLabel, value: infoValue, type: editingInfo.type }); } setEditingInfo(null); } }} className="flex-1 nb-btn py-3 text-sm" style={{background:"var(--turquoise)", color:"white"}}>{editingInfo.editId ? 'Enregistrer' : 'Ajouter'}</button>
                                             </div>
                                         </div>
                                     </div>
@@ -1860,10 +1860,10 @@
                                     </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        <input type="text" placeholder={addType === 'course' ? 'Article' : addType === 'menu' ? 'Plat' : 'Titre'} value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} />
+                                        <input type="text" placeholder={addType === 'course' ? 'Article' : addType === 'menu' ? 'Plat' : 'Titre'} value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} className="w-full nb-input" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }} />
                                         
                                         {addType === 'menu' && (
-                                            <select value={newItem.day} onChange={(e) => setNewItem({ ...newItem, day: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
+                                            <select value={newItem.day} onChange={(e) => setNewItem({ ...newItem, day: e.target.value })} className="w-full nb-input">
                                                 <option value="">Jour</option>
                                                 {DAY_ORDER.map(d => <option key={d} value={d}>{d}</option>)}
                                             </select>
@@ -1879,37 +1879,47 @@
                                                 <div className="flex gap-2">
                                                     <div className="flex-1">
                                                         <label className="text-xs text-[var(--text-soft)] mb-1 block">{newItem.isPeriod ? 'Début' : 'Date'}</label>
-                                                        <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full px-3 py-2.5 border-2 rounded-xl text-sm" />
+                                                        <input type="date" value={newItem.date} onChange={(e) => setNewItem({ ...newItem, date: e.target.value })} className="w-full nb-input" />
                                                     </div>
                                                     {newItem.isPeriod && (
                                                         <div className="flex-1">
                                                             <label className="text-xs text-[var(--text-soft)] mb-1 block">Fin</label>
-                                                            <input type="date" value={newItem.endDate} min={newItem.date} onChange={(e) => setNewItem({ ...newItem, endDate: e.target.value })} className="w-full px-3 py-2.5 border-2 rounded-xl text-sm" />
+                                                            <input type="date" value={newItem.endDate} min={newItem.date} onChange={(e) => setNewItem({ ...newItem, endDate: e.target.value })} className="w-full nb-input" />
                                                         </div>
                                                     )}
                                                 </div>
                                                 {!newItem.isPeriod && (
-                                                    <input type="time" value={newItem.time} onChange={(e) => setNewItem({ ...newItem, time: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm" />
+                                                    <input type="time" value={newItem.time} onChange={(e) => setNewItem({ ...newItem, time: e.target.value })} className="w-full nb-input" />
                                                 )}
-                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
+                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full nb-select">
                                                     <option value="">Catégorie</option>
                                                     {categories.events.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
                                                 </select>
+                                                {/* Color picker */}
+                                                <div>
+                                                    <p className="text-xs font-semibold mb-1.5" style={{color:'var(--text-soft)'}}>Couleur</p>
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        <button type="button" onClick={() => setNewItem({...newItem, color: ''})} className="cdot" style={{background: newItem.color ? 'var(--card)' : 'var(--text)', borderWidth: !newItem.color ? '3px' : '2px'}} title="Aucune"></button>
+                                                        {EVENT_COLORS.map(c => (
+                                                            <button type="button" key={c.id} onClick={() => setNewItem({...newItem, color: c.id})} className="cdot" style={{background: c.hex, borderWidth: newItem.color === c.id ? '3px' : '2px', transform: newItem.color === c.id ? 'scale(1.2)' : 'scale(1)', transition: 'transform 0.1s'}} title={c.name}></button>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </>
                                         )}
                                         
                                         {addType === 'todo' && (
                                             <>
-                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
+                                                <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full nb-input">
                                                     <option value="">Catégorie</option>
                                                     {categories.todos.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
                                                 </select>
-                                                <select value={newItem.priority} onChange={(e) => setNewItem({ ...newItem, priority: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
+                                                <select value={newItem.priority} onChange={(e) => setNewItem({ ...newItem, priority: e.target.value })} className="w-full nb-input">
                                                     <option value="low">⚪ Basse</option>
                                                     <option value="medium">● Moyenne</option>
                                                     <option value="high">● Haute</option>
                                                 </select>
-                                                <select value={newItem.assignedTo || ''} onChange={(e) => setNewItem({ ...newItem, assignedTo: e.target.value ? parseInt(e.target.value) : null })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
+                                                <select value={newItem.assignedTo || ''} onChange={(e) => setNewItem({ ...newItem, assignedTo: e.target.value ? parseInt(e.target.value) : null })} className="w-full nb-input">
                                                     <option value="">❓ Non assigné</option>
                                                     {users.map(u => <option key={u.id} value={u.id}>{u.emoji} {u.name}</option>)}
                                                 </select>
@@ -1917,14 +1927,14 @@
                                         )}
                                         
                                         {addType === 'course' && (
-                                            <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full px-4 py-3 border-2 rounded-xl text-sm">
+                                            <select value={newItem.category} onChange={(e) => setNewItem({ ...newItem, category: e.target.value })} className="w-full nb-input">
                                                 {categories.courses.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
                                             </select>
                                         )}
                                         
                                         <div className="flex gap-3 mt-2">
-                                            <button onClick={() => { setAddType(''); resetNewItem(); }} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Retour</button>
-                                            <button onClick={handleAdd} className="flex-1 bg-[var(--turquoise)] text-[var(--text)] font-bold py-3 rounded-xl text-sm font-medium">Ajouter</button>
+                                            <button onClick={() => { setAddType(''); resetNewItem(); }} className="flex-1 nb-btn py-3 text-sm" style={{background:"var(--card)"}}>Retour</button>
+                                            <button onClick={handleAdd} className="flex-1 nb-btn py-3 text-sm" style={{background:"var(--turquoise)", color:"white"}}>Ajouter</button>
                                         </div>
                                     </div>
                                 )}
@@ -1953,7 +1963,7 @@
                                     </div>
                                 )}
                                 <div className="flex gap-3">
-                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
+                                    <button onClick={() => { setAddCategoryModal(null); setNewCatName(''); setNewCatEmoji(''); }} className="flex-1 nb-btn py-3 text-sm" style={{background:"var(--card)"}}>Annuler</button>
                                     <button onClick={handleAddCategory} disabled={!newCatName.trim() || !newCatEmoji} className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${newCatName.trim() && newCatEmoji ? 'bg-[var(--turquoise)] text-[var(--text)] font-bold' : 'bg-gray-200 text-[var(--text-soft)]'}`}>Ajouter</button>
                                 </div>
                             </div>
@@ -1963,7 +1973,7 @@
                     {/* ===== ASSIGN PICKER (replaces prompt) ===== */}
                     {assignPickerTodo && (
                         <div className="nb-overlay">
-                            <div className="nb-modal" style={{maxWidth:"360px"}}">
+                            <div className="nb-modal" style={{maxWidth:"360px"}}>
                                 <h3 className="text-lg font-bold mb-3">Qui a fait cette tâche ?</h3>
                                 <div className="space-y-2">
                                     {users.map(u => (
@@ -1998,7 +2008,7 @@
                                     </div>
                                 )}
                                 <div className="flex gap-3">
-                                    <button onClick={() => setAddPersonModal(false)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
+                                    <button onClick={() => setAddPersonModal(false)} className="flex-1 nb-btn py-3 text-sm" style={{background:"var(--card)"}}>Annuler</button>
                                     <button onClick={() => {
                                         if (newPersonName.trim() && newPersonEmoji) {
                                             const maxId = Math.max(...externalPeople.map(p => p.id), ...users.map(u => u.id));
@@ -2038,7 +2048,7 @@
                                     </div>
                                 </div>
                                 <div className="flex gap-3">
-                                    <button onClick={() => setEditingTodo(null)} className="flex-1 bg-gray-100 py-3 rounded-xl text-sm">Annuler</button>
+                                    <button onClick={() => setEditingTodo(null)} className="flex-1 nb-btn py-3 text-sm" style={{background:"var(--card)"}}>Annuler</button>
                                     <button onClick={saveTodoEdit} className="flex-1 bg-[var(--turquoise)] text-[var(--text)] font-bold py-3 rounded-xl text-sm">Enregistrer</button>
                                 </div>
                             </div>
